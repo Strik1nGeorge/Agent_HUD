@@ -5,7 +5,8 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':
 const compact = new URLSearchParams(location.search).has('compact');
 if (compact) document.body.classList.add('compact');
 // online: null until the first fetch settles, so the nav can say "connecting" rather than "disconnected".
-const state = { data: null, range: '7d', provider: 'all', query: '', view: 'overview', includeSystem: false, sort: 'recent', rows: [], online: null, loading: false, detailId: null };
+const state = { data: null, range: '7d', provider: 'all', query: '', view: 'overview', includeSystem: false, sort: 'recent', rows: [], online: null, loading: false, detailId: null, group: 'model' };
+try { if (localStorage.getItem('agent-hud-group') === 'effort') state.group = 'effort'; } catch {}
 const number = n => new Intl.NumberFormat('en-US', { notation: n >= 10000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(n);
 const exact = n => new Intl.NumberFormat('en-US').format(Math.round(n || 0));
 const percent = n => `${Number(n.toFixed(1))}%`;
@@ -119,31 +120,44 @@ function renderChart(sessions) {
   box.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(t('chart.aria', { range: rangeLabel(state.range) }))}"><defs>${fill('codex')}${fill('claude')}</defs>${grid}${lines}${labels}</svg>`;
 }
 
-// Per-model totals come from the request records themselves, so a session that switched models is split correctly.
-function renderModels(sessions) {
-  const models = new Map();
+// Usage by model or by thinking effort. Totals come from the request records themselves, so a session
+// that switched model or effort mid-way is split correctly. Effort is per platform: Codex and Claude
+// Code name their levels differently, so the same word is kept apart rather than merged.
+function breakdownHeading() {
+  const effort = state.group === 'effort';
+  $('#breakdown-title').dataset.i18n = effort ? 'effort.title' : 'models.title';
+  $('#breakdown-sub').dataset.i18n = effort ? 'effort.sub' : 'models.sub';
+  $('#model-list').dataset.i18nAttr = `aria-label:${effort ? 'effort.title' : 'models.title'}`;
+  $$('[data-group]').forEach(b => b.classList.toggle('selected', b.dataset.group === state.group));
+  applyStatic($('.model-panel'));
+}
+function renderBreakdown(sessions) {
+  const byEffort = state.group === 'effort';
+  const groups = new Map();
   for (const s of sessions) for (const r of s.records) {
-    const key = `${s.provider}\u0000${r.model || ''}`;
-    let m = models.get(key);
-    if (!m) models.set(key, m = { provider: s.provider, model: r.model || t('time.none'), input: 0, output: 0, cached: 0, total: 0, requests: 0, sessions: new Set() });
-    m.input += r.input || 0; m.output += r.output || 0; m.cached += r.cached || 0; m.total += r.total || 0; m.requests++; m.sessions.add(s.id);
+    const value = (byEffort ? r.effort : r.model) || null;
+    const key = `${s.provider}\u0000${value || ''}`;
+    let g = groups.get(key);
+    if (!g) groups.set(key, g = { provider: s.provider, value, input: 0, output: 0, cached: 0, reasoning: 0, total: 0, requests: 0, sessions: new Set() });
+    g.input += r.input || 0; g.output += r.output || 0; g.cached += r.cached || 0; g.reasoning += r.reasoning || 0; g.total += r.total || 0; g.requests++; g.sessions.add(s.id);
   }
-  const rows = [...models.values()].sort((a, b) => b.total - a.total);
-  const sum = rows.reduce((n, m) => n + m.total, 0);
+  const rows = [...groups.values()].sort((a, b) => b.total - a.total);
+  const sum = rows.reduce((n, g) => n + g.total, 0);
   $('#model-count').textContent = rows.length;
   const cell = (content, className = '') => `<div role="cell" class="${className}">${content}</div>`;
-  const head = `<div class="model-row head" role="row">${[t('models.model'), t('models.share'), 'Tokens', t('models.io'), t('models.cache'), t('models.requests')].map(label => `<div role="columnheader">${label}</div>`).join('')}</div>`;
-  $('#model-list').innerHTML = rows.length ? head + rows.map(m => {
-    const share = sum ? m.total / sum * 100 : 0;
-    const sessionCount = t(m.sessions.size === 1 ? 'models.session' : 'models.sessions', { n: m.sessions.size });
-    const title = t('models.title.row', { model: m.model, total: exact(m.total), input: exact(m.input), output: exact(m.output) });
-    return `<div class="model-row ${m.provider}" role="row" title="${escapeHtml(title)}">`
-      + cell(`<span class="agent-symbol ${m.provider}" aria-hidden="true">${LOGOS[m.provider] || ''}</span><div class="model-text"><div class="model-id">${escapeHtml(m.model)}</div><div class="model-sub">${m.provider === 'codex' ? 'Codex' : 'Claude Code'} · ${sessionCount}</div></div>`, 'model-name')
+  const head = `<div class="model-row head" role="row">${[byEffort ? t('effort.level') : t('models.model'), t('models.share'), 'Tokens', byEffort ? t('effort.thinking') : t('models.io'), t('models.cache'), t('models.requests')].map(label => `<div role="columnheader">${label}</div>`).join('')}</div>`;
+  $('#model-list').innerHTML = rows.length ? head + rows.map(g => {
+    const share = sum ? g.total / sum * 100 : 0;
+    const label = g.value || t(byEffort ? 'effort.none' : 'time.none');
+    const sessionCount = t(g.sessions.size === 1 ? 'models.session' : 'models.sessions', { n: g.sessions.size });
+    const title = byEffort ? t('effort.title.row', { effort: label, total: exact(g.total), thinking: exact(g.reasoning) }) : t('models.title.row', { model: label, total: exact(g.total), input: exact(g.input), output: exact(g.output) });
+    return `<div class="model-row ${g.provider}" role="row" title="${escapeHtml(title)}">`
+      + cell(`<span class="agent-symbol ${g.provider}" aria-hidden="true">${LOGOS[g.provider] || ''}</span><div class="model-text"><div class="model-id${g.value ? '' : ' unknown'}">${escapeHtml(label)}</div><div class="model-sub">${g.provider === 'codex' ? 'Codex' : 'Claude Code'} · ${sessionCount}</div></div>`, 'model-name')
       + cell(`<span class="share-track"><span style="width:${share.toFixed(2)}%"></span></span><span class="share-value">${share > 0 && share < .1 ? '&lt;0.1%' : percent(share)}</span>`, 'model-share')
-      + cell(number(m.total), 'model-tokens')
-      + cell(`${number(m.input)} / ${number(m.output)}`, 'model-muted')
-      + cell(m.input ? percent(m.cached / m.input * 100) : '—', 'model-muted')
-      + cell(exact(m.requests), 'model-muted')
+      + cell(number(g.total), 'model-tokens')
+      + cell(byEffort ? number(g.reasoning) : `${number(g.input)} / ${number(g.output)}`, 'model-muted')
+      + cell(g.input ? percent(g.cached / g.input * 100) : '—', 'model-muted')
+      + cell(exact(g.requests), 'model-muted')
       + '</div>';
   }).join('') : `<div class="model-empty">${state.data.loading ? t('table.scanning') : t('models.empty')}</div>`;
 }
@@ -245,7 +259,7 @@ $('#lang-button').addEventListener('click',()=>{setLang(lang==='en'?'zh':'en');a
 function render() {
   if(!state.data)return;
   const sessions=selectedSessions();
-  renderProviders();renderStats(sessions);renderChart(sessions);renderModels(sessions);renderSessions(sessions);renderConnections();
+  renderProviders();renderStats(sessions);renderChart(sessions);renderBreakdown(sessions);renderSessions(sessions);renderConnections();
   $('#last-sync').textContent=state.data.collectedAt?t('footer.lastScan', { time: fullTime(state.data.collectedAt) }):t('footer.scanning');
   if(state.detailId&&$('#detail-dialog').classList.contains('open'))openDetail(state.detailId);
 }
@@ -293,6 +307,7 @@ $('#search-input').addEventListener('input',e=>{state.query=e.target.value;if(st
 $('#include-system').addEventListener('change',e=>{state.includeSystem=e.target.checked;render();});
 $$('[data-provider]').forEach(b=>b.addEventListener('click',()=>{state.provider=b.dataset.provider;$$('[data-provider]').forEach(x=>x.classList.toggle('selected',x===b));render();placeThumbs();}));
 $$('[data-view]').forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.view)));
+$$('[data-group]').forEach(b=>b.addEventListener('click',()=>{state.group=b.dataset.group;try{localStorage.setItem('agent-hud-group',state.group);}catch{}breakdownHeading();if(state.data)renderBreakdown(selectedSessions());placeThumbs();}));
 $('#sort-tokens').addEventListener('click',()=>{state.sort=state.sort==='tokens'?'recent':'tokens';$('#sort-tokens span').textContent=state.sort==='tokens'?'↓':'↕';render();});
 $('#refresh-button').addEventListener('click',refresh);
 $('#compact-button').addEventListener('click',()=>{if(compact){location.href='/';return;}const win=window.open('/?compact=1','agent-hud-compact','width=450,height=780,resizable=yes,scrollbars=yes');if(!win)toast(t('compact.blocked'));});
@@ -303,6 +318,7 @@ $$('dialog').forEach(dialog=>{
   dialog.addEventListener('cancel',e=>{e.preventDefault();closeDialog(dialog);});
   dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeDialog(dialog);}});
 });
+breakdownHeading();
 applyLanguage();
 // Scroll edge: the nav hairline appears only once content passes beneath it.
 const syncNavEdge=()=>$('#nav').classList.toggle('scrolled',scrollY>8);

@@ -14,6 +14,19 @@ test('Claude streaming repeats coalesce by message ID and preserve the largest c
   for(const out of [10,30,20])consumeClaude(s,{type:'assistant',sessionId:'s',timestamp:'2026-10-14T10:00:00Z',message:{id:'m',model:'claude',usage:{input_tokens:5,output_tokens:out,cache_read_input_tokens:200}}});
   assert.equal(sessionRecords(s).length,1);assert.equal(sessionRecords(s)[0].total,235);
 });
+test('Each request keeps the thinking effort it ran with; unknown values stay null', () => {
+  const c=newSession('codex','file');consumeCodex(c,{type:'session_meta',payload:{id:'s'}});
+  consumeCodex(c,{type:'token_usage_record',timestamp:'2026-10-14T10:00:00Z',payload:{thread_id:'s',response_id:'r0',usage:{input_tokens:1}}});
+  consumeCodex(c,{type:'turn_context',payload:{model:'gpt',effort:'xhigh'}});
+  consumeCodex(c,{type:'token_usage_record',timestamp:'2026-10-14T10:01:00Z',payload:{thread_id:'s',response_id:'r1',usage:{input_tokens:1}}});
+  consumeCodex(c,{type:'turn_context',payload:{model:'gpt',collaboration_mode:{settings:{reasoning_effort:'Low'}}}});
+  consumeCodex(c,{type:'token_usage_record',timestamp:'2026-10-14T10:02:00Z',payload:{thread_id:'s',response_id:'r2',usage:{input_tokens:1}}});
+  assert.deepEqual(sessionRecords(c).map(r=>r.effort),[null,'xhigh','low']);
+  const a=newSession('claude','file');
+  const reply=(id,extra)=>consumeClaude(a,{type:'assistant',sessionId:'s',timestamp:'2026-10-14T10:00:00Z',...extra,message:{id,model:'claude',usage:{input_tokens:1,output_tokens:1}}});
+  reply('m1',{effort:'max'});reply('m1',{});reply('m2',{perTurnEffort:'medium'});reply('m3',{effort:{level:'odd'}});
+  assert.deepEqual(sessionRecords(a).map(r=>r.effort),['max','medium',null]);
+});
 test('Codex ignores inherited records belonging to a parent and deduplicates response IDs', () => {
   const s=newSession('codex','file');consumeCodex(s,{type:'session_meta',payload:{id:'child',parent_thread_id:'parent',timestamp:'2026-10-14T10:00:00Z'}});
   for(const thread of ['parent','child','child'])consumeCodex(s,{type:'token_usage_record',timestamp:'2026-10-14T10:01:00Z',payload:{thread_id:thread,response_id:'r',usage:{input_tokens:100,output_tokens:5}}});

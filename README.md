@@ -35,7 +35,7 @@
 ## Highlights
 
 - 🪟 **Desktop widget** — a frosted-glass strip that blurs what's behind it, with brand-colored rings, the remaining percentage and when each quota resets.
-- 📊 **Dashboard** — account quotas, token usage, cache hit rate, a seven-day chart, usage by model and every agent session, in light or dark.
+- 📊 **Dashboard** — account quotas, token usage, cache hit rate, a seven-day chart, usage by model or thinking effort, and every agent session, in light or dark.
 - 🔒 **Local only** — reads your own Codex / Claude Code logs, binds to 127.0.0.1, never stores prompts or credentials.
 - 📌 **Stays out of the way** — one-click pin, snaps to screen edges, restarts its own service if it stops.
 - 🌐 **English / 中文** — the dashboard follows your browser language and the widget your Windows language; both switch with one click.
@@ -56,6 +56,7 @@ The dashboard's top-right corner switches language (EN / 中), switches appearan
 - Claude Code: incrementally reads `~/.claude/projects/**/*.jsonl`. Merges streamed records of the same response by message ID, deduplicates across copied/resumed sessions, and reads sub-agent files.
 - Input includes cache reads and writes; output includes reasoning. Cache and reasoning are never added to the total a second time. The cross-platform total is `input + output`.
 - *Usage by model* adds up each request under the model that served it, so a session that switched models is split between them. It follows the time range, platform filter and system-agent switch.
+- *By effort* groups the same requests by thinking effort instead, as each client recorded it: Claude Code writes the level on every reply, Codex on every turn. Levels stay per platform (Codex `xhigh` and Claude Code `xhigh` are separate rows). The thinking-tokens column is the reasoning share of output; requests from client versions that didn't record a level show as *Not recorded*.
 - System review agents are hidden by default; turn them on below the table. Their token records do not equal subscription quota usage.
 - Counts cover sessions on this machine that haven't been archived. It is not all of your cloud activity and not a bill. "Recently active" means a record in the last 2 minutes, not process detection.
 - Date ranges and charts use the America/New_York time zone. Account quotas always follow each platform's own windows and ignore the token date filter.
