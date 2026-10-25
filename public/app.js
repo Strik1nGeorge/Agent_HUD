@@ -6,7 +6,7 @@ const compact = new URLSearchParams(location.search).has('compact');
 if (compact) document.body.classList.add('compact');
 // online: null until the first fetch settles, so the nav can say "connecting" rather than "disconnected".
 const state = { data: null, range: '7d', provider: 'all', query: '', view: 'overview', includeSystem: false, sort: 'recent', rows: [], online: null, loading: false, detailId: null, group: 'model' };
-try { if (localStorage.getItem('agent-hud-group') === 'effort') state.group = 'effort'; } catch {}
+try { const group = localStorage.getItem('agent-hud-group'); if (group === 'effort' || group === 'project') state.group = group; } catch {}
 const number = n => new Intl.NumberFormat('en-US', { notation: n >= 10000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(n);
 const exact = n => new Intl.NumberFormat('en-US').format(Math.round(n || 0));
 const percent = n => `${Number(n.toFixed(1))}%`;
@@ -120,49 +120,71 @@ function renderChart(sessions) {
   box.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(t('chart.aria', { range: rangeLabel(state.range) }))}"><defs>${fill('codex')}${fill('claude')}</defs>${grid}${lines}${labels}</svg>`;
 }
 
-// Usage by model or by thinking effort. Totals come from the request records themselves, so a session
-// that switched model or effort mid-way is split correctly. Effort rows are per model (and so per
-// platform): the same level on two models, or Codex's and Claude Code's "xhigh", are kept apart.
+// Usage by model, by thinking effort or by project. Totals come from the request records themselves, so
+// a session that switched model or effort mid-way is split correctly. Effort rows are per model (and so
+// per platform): the same level on two models, or Codex's and Claude Code's "xhigh", are kept apart.
+// Projects are the folder name each session ran in; one project can hold both platforms.
+const GROUP_TEXT = { model: ['models.title', 'models.sub'], effort: ['effort.title', 'effort.sub'], project: ['project.title', 'project.sub'] };
+const platformName = id => id === 'codex' ? 'Codex' : 'Claude Code';
+// Longer lists show the biggest rows and fold the tail into one row that still states its total.
+const FOLD_OVER = 10, FOLD_SHOW = 8;
 function breakdownHeading() {
-  const effort = state.group === 'effort';
-  $('#breakdown-title').dataset.i18n = effort ? 'effort.title' : 'models.title';
-  $('#breakdown-sub').dataset.i18n = effort ? 'effort.sub' : 'models.sub';
-  $('#model-list').dataset.i18nAttr = `aria-label:${effort ? 'effort.title' : 'models.title'}`;
+  const [title, sub] = GROUP_TEXT[state.group];
+  $('#breakdown-title').dataset.i18n = title;
+  $('#breakdown-sub').dataset.i18n = sub;
+  $('#model-list').dataset.i18nAttr = `aria-label:${title}`;
   $$('[data-group]').forEach(b => b.classList.toggle('selected', b.dataset.group === state.group));
   applyStatic($('.model-panel'));
 }
 function renderBreakdown(sessions) {
-  const byEffort = state.group === 'effort';
+  const mode = state.group;
   const groups = new Map();
   for (const s of sessions) for (const r of s.records) {
-    const value = (byEffort ? r.effort : r.model) || null;
-    const key = `${s.provider}\u0000${byEffort ? r.model || '' : ''}\u0000${value || ''}`;
+    const value = (mode === 'project' ? s.project : mode === 'effort' ? r.effort : r.model) || null;
+    const key = mode === 'project' ? value || '' : `${s.provider}\u0000${mode === 'effort' ? r.model || '' : ''}\u0000${value || ''}`;
     let g = groups.get(key);
-    if (!g) groups.set(key, g = { provider: s.provider, model: r.model || null, value, input: 0, output: 0, cached: 0, reasoning: 0, total: 0, requests: 0, sessions: new Set() });
-    g.input += r.input || 0; g.output += r.output || 0; g.cached += r.cached || 0; g.reasoning += r.reasoning || 0; g.total += r.total || 0; g.requests++; g.sessions.add(s.id);
+    if (!g) groups.set(key, g = { model: r.model || null, value, providers: new Set(), parts: { codex: 0, claude: 0 }, input: 0, output: 0, cached: 0, reasoning: 0, total: 0, requests: 0, sessions: new Set() });
+    g.providers.add(s.provider); g.parts[s.provider] += r.total || 0;
+    g.input += r.input || 0; g.output += r.output || 0; g.cached += r.cached || 0; g.reasoning += r.reasoning || 0; g.total += r.total || 0; g.requests++; g.sessions.add(`${s.provider}:${s.id}`);
   }
   const rows = [...groups.values()].sort((a, b) => b.total - a.total);
   const sum = rows.reduce((n, g) => n + g.total, 0);
+  const shareText = share => share > 0 && share < .1 ? '&lt;0.1%' : percent(share);
+  const folded = rows.length > FOLD_OVER && !state.breakdownOpen;
+  const shown = folded ? rows.slice(0, FOLD_SHOW) : rows;
   $('#model-count').textContent = rows.length;
   const cell = (content, className = '') => `<div role="cell" class="${className}">${content}</div>`;
-  const head = `<div class="model-row head" role="row">${[byEffort ? t('effort.level') : t('models.model'), t('models.share'), 'Tokens', byEffort ? t('effort.thinking') : t('models.io'), t('models.cache'), t('models.requests')].map(label => `<div role="columnheader">${label}</div>`).join('')}</div>`;
-  $('#model-list').innerHTML = rows.length ? head + rows.map(g => {
+  const firstHeader = mode === 'project' ? t('project.label') : mode === 'effort' ? t('effort.level') : t('models.model');
+  const head = `<div class="model-row head" role="row">${[firstHeader, t('models.share'), 'Tokens', mode === 'effort' ? t('effort.thinking') : t('models.io'), t('models.cache'), t('models.requests')].map(label => `<div role="columnheader">${label}</div>`).join('')}</div>`;
+  const body = shown.map(g => {
     const share = sum ? g.total / sum * 100 : 0;
-    const label = g.value || t(byEffort ? 'effort.none' : 'time.none');
+    const provider = g.providers.size > 1 ? 'mixed' : [...g.providers][0];
+    const label = mode === 'project' ? server(g.value) || t('time.none') : g.value || t(mode === 'effort' ? 'effort.none' : 'time.none');
     const sessionCount = t(g.sessions.size === 1 ? 'models.session' : 'models.sessions', { n: g.sessions.size });
     const modelName = g.model || t('time.none');
-    const title = byEffort ? t('effort.title.row', { effort: label, model: modelName, total: exact(g.total), thinking: exact(g.reasoning) }) : t('models.title.row', { model: label, total: exact(g.total), input: exact(g.input), output: exact(g.output) });
+    const title = mode === 'effort' ? t('effort.title.row', { effort: label, model: modelName, total: exact(g.total), thinking: exact(g.reasoning) })
+      : t(mode === 'project' ? 'project.title.row' : 'models.title.row', { model: label, project: label, total: exact(g.total), input: exact(g.input), output: exact(g.output) });
     // The logo names the platform; under an effort level the second line names the model instead.
-    const sub = byEffort ? `<span class="model-sub-id">${escapeHtml(modelName)}</span><span class="sub-count"> · ${sessionCount}</span>` : `${g.provider === 'codex' ? 'Codex' : 'Claude Code'} · ${sessionCount}`;
-    return `<div class="model-row ${g.provider}" role="row" title="${escapeHtml(title)}">`
-      + cell(`<span class="agent-symbol ${g.provider}" aria-hidden="true">${LOGOS[g.provider] || ''}</span><div class="model-text"><div class="model-id${g.value ? '' : ' unknown'}">${escapeHtml(label)}</div><div class="model-sub">${sub}</div></div>`, 'model-name')
-      + cell(`<span class="share-track"><span style="width:${share.toFixed(2)}%"></span></span><span class="share-value">${share > 0 && share < .1 ? '&lt;0.1%' : percent(share)}</span>`, 'model-share')
+    const sub = mode === 'effort' ? `<span class="model-sub-id">${escapeHtml(modelName)}</span><span class="sub-count"> · ${sessionCount}</span>`
+      : `${['codex', 'claude'].filter(id => g.providers.has(id)).map(platformName).join(' + ')} · ${sessionCount}`;
+    const icon = provider === 'mixed' ? LOGOS.codex + LOGOS.claude : LOGOS[provider] || '';
+    // A project used from both platforms splits its bar by platform colour.
+    const bar = provider === 'mixed'
+      ? `<span class="stack" style="width:${share.toFixed(2)}%">${['codex', 'claude'].map(id => `<i class="${id}" style="width:${(g.total ? g.parts[id] / g.total * 100 : 0).toFixed(2)}%"></i>`).join('')}</span>`
+      : `<span style="width:${share.toFixed(2)}%"></span>`;
+    return `<div class="model-row ${provider}" role="row" title="${escapeHtml(title)}">`
+      + cell(`<span class="agent-symbol ${provider}" aria-hidden="true">${icon}</span><div class="model-text"><div class="model-id${g.value ? '' : ' unknown'}${mode === 'project' ? ' project-name' : ''}">${escapeHtml(label)}</div><div class="model-sub">${sub}</div></div>`, 'model-name')
+      + cell(`<span class="share-track">${bar}</span><span class="share-value">${shareText(share)}</span>`, 'model-share')
       + cell(number(g.total), 'model-tokens')
-      + cell(byEffort ? number(g.reasoning) : `${number(g.input)} / ${number(g.output)}`, 'model-muted')
+      + cell(mode === 'effort' ? number(g.reasoning) : `${number(g.input)} / ${number(g.output)}`, 'model-muted')
       + cell(g.input ? percent(g.cached / g.input * 100) : '—', 'model-muted')
       + cell(exact(g.requests), 'model-muted')
       + '</div>';
-  }).join('') : `<div class="model-empty">${state.data.loading ? t('table.scanning') : t('models.empty')}</div>`;
+  }).join('');
+  const rest = rows.slice(FOLD_SHOW), restTotal = rest.reduce((n, g) => n + g.total, 0);
+  const toggle = rows.length <= FOLD_OVER ? '' : `<button class="model-more" data-breakdown-more aria-expanded="${!folded}">${folded ? t('breakdown.more', { n: rest.length, tokens: number(restTotal), share: shareText(sum ? restTotal / sum * 100 : 0) }) : t('breakdown.less')}</button>`;
+  $('#model-list').innerHTML = rows.length ? head + body + toggle : `<div class="model-empty">${state.data.loading ? t('table.scanning') : t('models.empty')}</div>`;
+  $('[data-breakdown-more]')?.addEventListener('click', () => { state.breakdownOpen = !state.breakdownOpen; renderBreakdown(selectedSessions()); });
 }
 
 function renderSessions(sessions) {
@@ -310,7 +332,7 @@ $('#search-input').addEventListener('input',e=>{state.query=e.target.value;if(st
 $('#include-system').addEventListener('change',e=>{state.includeSystem=e.target.checked;render();});
 $$('[data-provider]').forEach(b=>b.addEventListener('click',()=>{state.provider=b.dataset.provider;$$('[data-provider]').forEach(x=>x.classList.toggle('selected',x===b));render();placeThumbs();}));
 $$('[data-view]').forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.view)));
-$$('[data-group]').forEach(b=>b.addEventListener('click',()=>{state.group=b.dataset.group;try{localStorage.setItem('agent-hud-group',state.group);}catch{}breakdownHeading();if(state.data)renderBreakdown(selectedSessions());placeThumbs();}));
+$$('[data-group]').forEach(b=>b.addEventListener('click',()=>{state.group=b.dataset.group;state.breakdownOpen=false;try{localStorage.setItem('agent-hud-group',state.group);}catch{}breakdownHeading();if(state.data)renderBreakdown(selectedSessions());placeThumbs();}));
 $('#sort-tokens').addEventListener('click',()=>{state.sort=state.sort==='tokens'?'recent':'tokens';$('#sort-tokens span').textContent=state.sort==='tokens'?'↓':'↕';render();});
 $('#refresh-button').addEventListener('click',refresh);
 $('#compact-button').addEventListener('click',()=>{if(compact){location.href='/';return;}const win=window.open('/?compact=1','agent-hud-compact','width=450,height=780,resizable=yes,scrollbars=yes');if(!win)toast(t('compact.blocked'));});
