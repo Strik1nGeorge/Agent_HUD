@@ -302,6 +302,7 @@ h1 { margin: 15px 0 0; font-size: clamp(32px, 6vw, 52px); font-weight: 700; lett
 .model-text { min-width: 0; }
 .model-id { overflow: hidden; color: var(--text); font: 600 13.5px var(--mono); white-space: nowrap; text-overflow: ellipsis; }
 .model-id.unknown { color: var(--text-2); font-family: inherit; font-weight: 500; }
+.model-sub-id { color: var(--text-2); font: 12px var(--mono); }
 .model-sub { margin-top: 2px; overflow: hidden; color: var(--text-3); font-size: 12.5px; white-space: nowrap; text-overflow: ellipsis; }
 .model-share { display: flex; align-items: center; gap: 12px; }
 .share-track { flex: 1; height: 6px; overflow: hidden; border-radius: var(--r-pill); background: var(--codex-track); }
@@ -472,6 +473,8 @@ dialog li { margin: 6px 0; }
   .model-name { gap: 10px; }
   .model-id { font-size: 12.5px; }
   .model-sub { font-size: 12px; }
+  /* Under an effort level the model name matters more than the session count. */
+  .model-sub-id + .sub-count { display: none; }
   .share-track { display: none; }
   .share-value { min-width: 0; }
   .table-footer, .page-footer { flex-direction: column; align-items: flex-start; gap: 4px; }

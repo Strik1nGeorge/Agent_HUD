@@ -121,8 +121,8 @@ function renderChart(sessions) {
 }
 
 // Usage by model or by thinking effort. Totals come from the request records themselves, so a session
-// that switched model or effort mid-way is split correctly. Effort is per platform: Codex and Claude
-// Code name their levels differently, so the same word is kept apart rather than merged.
+// that switched model or effort mid-way is split correctly. Effort rows are per model (and so per
+// platform): the same level on two models, or Codex's and Claude Code's "xhigh", are kept apart.
 function breakdownHeading() {
   const effort = state.group === 'effort';
   $('#breakdown-title').dataset.i18n = effort ? 'effort.title' : 'models.title';
@@ -136,9 +136,9 @@ function renderBreakdown(sessions) {
   const groups = new Map();
   for (const s of sessions) for (const r of s.records) {
     const value = (byEffort ? r.effort : r.model) || null;
-    const key = `${s.provider}\u0000${value || ''}`;
+    const key = `${s.provider}\u0000${byEffort ? r.model || '' : ''}\u0000${value || ''}`;
     let g = groups.get(key);
-    if (!g) groups.set(key, g = { provider: s.provider, value, input: 0, output: 0, cached: 0, reasoning: 0, total: 0, requests: 0, sessions: new Set() });
+    if (!g) groups.set(key, g = { provider: s.provider, model: r.model || null, value, input: 0, output: 0, cached: 0, reasoning: 0, total: 0, requests: 0, sessions: new Set() });
     g.input += r.input || 0; g.output += r.output || 0; g.cached += r.cached || 0; g.reasoning += r.reasoning || 0; g.total += r.total || 0; g.requests++; g.sessions.add(s.id);
   }
   const rows = [...groups.values()].sort((a, b) => b.total - a.total);
@@ -150,9 +150,12 @@ function renderBreakdown(sessions) {
     const share = sum ? g.total / sum * 100 : 0;
     const label = g.value || t(byEffort ? 'effort.none' : 'time.none');
     const sessionCount = t(g.sessions.size === 1 ? 'models.session' : 'models.sessions', { n: g.sessions.size });
-    const title = byEffort ? t('effort.title.row', { effort: label, total: exact(g.total), thinking: exact(g.reasoning) }) : t('models.title.row', { model: label, total: exact(g.total), input: exact(g.input), output: exact(g.output) });
+    const modelName = g.model || t('time.none');
+    const title = byEffort ? t('effort.title.row', { effort: label, model: modelName, total: exact(g.total), thinking: exact(g.reasoning) }) : t('models.title.row', { model: label, total: exact(g.total), input: exact(g.input), output: exact(g.output) });
+    // The logo names the platform; under an effort level the second line names the model instead.
+    const sub = byEffort ? `<span class="model-sub-id">${escapeHtml(modelName)}</span><span class="sub-count"> · ${sessionCount}</span>` : `${g.provider === 'codex' ? 'Codex' : 'Claude Code'} · ${sessionCount}`;
     return `<div class="model-row ${g.provider}" role="row" title="${escapeHtml(title)}">`
-      + cell(`<span class="agent-symbol ${g.provider}" aria-hidden="true">${LOGOS[g.provider] || ''}</span><div class="model-text"><div class="model-id${g.value ? '' : ' unknown'}">${escapeHtml(label)}</div><div class="model-sub">${g.provider === 'codex' ? 'Codex' : 'Claude Code'} · ${sessionCount}</div></div>`, 'model-name')
+      + cell(`<span class="agent-symbol ${g.provider}" aria-hidden="true">${LOGOS[g.provider] || ''}</span><div class="model-text"><div class="model-id${g.value ? '' : ' unknown'}">${escapeHtml(label)}</div><div class="model-sub">${sub}</div></div>`, 'model-name')
       + cell(`<span class="share-track"><span style="width:${share.toFixed(2)}%"></span></span><span class="share-value">${share > 0 && share < .1 ? '&lt;0.1%' : percent(share)}</span>`, 'model-share')
       + cell(number(g.total), 'model-tokens')
       + cell(byEffort ? number(g.reasoning) : `${number(g.input)} / ${number(g.output)}`, 'model-muted')
