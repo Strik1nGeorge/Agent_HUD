@@ -119,6 +119,35 @@ function renderChart(sessions) {
   box.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(t('chart.aria', { range: rangeLabel(state.range) }))}"><defs>${fill('codex')}${fill('claude')}</defs>${grid}${lines}${labels}</svg>`;
 }
 
+// Per-model totals come from the request records themselves, so a session that switched models is split correctly.
+function renderModels(sessions) {
+  const models = new Map();
+  for (const s of sessions) for (const r of s.records) {
+    const key = `${s.provider}\u0000${r.model || ''}`;
+    let m = models.get(key);
+    if (!m) models.set(key, m = { provider: s.provider, model: r.model || t('time.none'), input: 0, output: 0, cached: 0, total: 0, requests: 0, sessions: new Set() });
+    m.input += r.input || 0; m.output += r.output || 0; m.cached += r.cached || 0; m.total += r.total || 0; m.requests++; m.sessions.add(s.id);
+  }
+  const rows = [...models.values()].sort((a, b) => b.total - a.total);
+  const sum = rows.reduce((n, m) => n + m.total, 0);
+  $('#model-count').textContent = rows.length;
+  const cell = (content, className = '') => `<div role="cell" class="${className}">${content}</div>`;
+  const head = `<div class="model-row head" role="row">${[t('models.model'), t('models.share'), 'Tokens', t('models.io'), t('models.cache'), t('models.requests')].map(label => `<div role="columnheader">${label}</div>`).join('')}</div>`;
+  $('#model-list').innerHTML = rows.length ? head + rows.map(m => {
+    const share = sum ? m.total / sum * 100 : 0;
+    const sessionCount = t(m.sessions.size === 1 ? 'models.session' : 'models.sessions', { n: m.sessions.size });
+    const title = t('models.title.row', { model: m.model, total: exact(m.total), input: exact(m.input), output: exact(m.output) });
+    return `<div class="model-row ${m.provider}" role="row" title="${escapeHtml(title)}">`
+      + cell(`<span class="agent-symbol ${m.provider}" aria-hidden="true">${LOGOS[m.provider] || ''}</span><div class="model-text"><div class="model-id">${escapeHtml(m.model)}</div><div class="model-sub">${m.provider === 'codex' ? 'Codex' : 'Claude Code'} · ${sessionCount}</div></div>`, 'model-name')
+      + cell(`<span class="share-track"><span style="width:${share.toFixed(2)}%"></span></span><span class="share-value">${share > 0 && share < .1 ? '&lt;0.1%' : percent(share)}</span>`, 'model-share')
+      + cell(number(m.total), 'model-tokens')
+      + cell(`${number(m.input)} / ${number(m.output)}`, 'model-muted')
+      + cell(m.input ? percent(m.cached / m.input * 100) : '—', 'model-muted')
+      + cell(exact(m.requests), 'model-muted')
+      + '</div>';
+  }).join('') : `<div class="model-empty">${state.data.loading ? t('table.scanning') : t('models.empty')}</div>`;
+}
+
 function renderSessions(sessions) {
   const q = state.query.toLowerCase().trim();
   const rows = sessions.filter(s => !q || [s.name,s.project,s.model,s.id].some(v => String(v || '').toLowerCase().includes(q)));
@@ -216,7 +245,7 @@ $('#lang-button').addEventListener('click',()=>{setLang(lang==='en'?'zh':'en');a
 function render() {
   if(!state.data)return;
   const sessions=selectedSessions();
-  renderProviders();renderStats(sessions);renderChart(sessions);renderSessions(sessions);renderConnections();
+  renderProviders();renderStats(sessions);renderChart(sessions);renderModels(sessions);renderSessions(sessions);renderConnections();
   $('#last-sync').textContent=state.data.collectedAt?t('footer.lastScan', { time: fullTime(state.data.collectedAt) }):t('footer.scanning');
   if(state.detailId&&$('#detail-dialog').classList.contains('open'))openDetail(state.detailId);
 }

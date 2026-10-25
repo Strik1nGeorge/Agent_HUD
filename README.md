@@ -26,7 +26,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark-en.png">
-    <img src="docs/images/dashboard-light-en.png" width="880" alt="Dashboard: account quotas, usage summary and a seven-day usage chart">
+    <img src="docs/images/dashboard-light-en.png" width="880" alt="Dashboard: account quotas, usage summary, a seven-day usage chart and usage by model">
   </picture>
   <br>
   <sub>Screenshots use demo data.</sub>
@@ -35,7 +35,7 @@
 ## Highlights
 
 - 🪟 **Desktop widget** — a frosted-glass strip that blurs what's behind it, with brand-colored rings, the remaining percentage and when each quota resets.
-- 📊 **Dashboard** — account quotas, token usage, cache hit rate, a seven-day chart and every agent session, in light or dark.
+- 📊 **Dashboard** — account quotas, token usage, cache hit rate, a seven-day chart, usage by model and every agent session, in light or dark.
 - 🔒 **Local only** — reads your own Codex / Claude Code logs, binds to 127.0.0.1, never stores prompts or credentials.
 - 📌 **Stays out of the way** — one-click pin, snaps to screen edges, restarts its own service if it stops.
 - 🌐 **English / 中文** — the dashboard follows your browser language and the widget your Windows language; both switch with one click.
@@ -55,6 +55,7 @@ The dashboard's top-right corner switches language (EN / 中), switches appearan
 - Codex: incrementally reads `~/.codex/sessions/**/*.jsonl` and takes titles from `session_index.jsonl`. Uses per-request `token_usage_record` usage when present, falling back to diffs of cumulative `token_count` values on older versions. Deduplicates by response ID, excludes records inherited from other threads, and recognizes parent/child agents.
 - Claude Code: incrementally reads `~/.claude/projects/**/*.jsonl`. Merges streamed records of the same response by message ID, deduplicates across copied/resumed sessions, and reads sub-agent files.
 - Input includes cache reads and writes; output includes reasoning. Cache and reasoning are never added to the total a second time. The cross-platform total is `input + output`.
+- *Usage by model* adds up each request under the model that served it, so a session that switched models is split between them. It follows the time range, platform filter and system-agent switch.
 - System review agents are hidden by default; turn them on below the table. Their token records do not equal subscription quota usage.
 - Counts cover sessions on this machine that haven't been archived. It is not all of your cloud activity and not a bill. "Recently active" means a record in the last 2 minutes, not process detection.
 - Date ranges and charts use the America/New_York time zone. Account quotas always follow each platform's own windows and ignore the token date filter.

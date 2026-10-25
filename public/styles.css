@@ -291,7 +291,27 @@ h1 { margin: 15px 0 0; font-size: clamp(32px, 6vw, 52px); font-weight: 700; lett
 .chart-empty { display: flex; justify-content: center; align-items: center; height: 100%; color: var(--text-2); }
 
 /* ---------- Sessions: unified panel, hairline rows ---------- */
-.count-pill { padding: 2px 9px; border-radius: var(--r-pill); background: var(--fill); color: var(--text-2); font-size: 12px; font-weight: 550; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+/* Usage by model: a list, not a <table>, so the session table's column rules don't reach it. */
+.model-panel { margin-top: 14px; }
+.model-list { padding-bottom: 6px; }
+.model-row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(140px, 2fr) 76px 124px 76px 72px; align-items: center; gap: 16px; padding: 12px var(--panel-x); font-variant-numeric: tabular-nums; }
+.model-row > :nth-child(n+3) { text-align: right; white-space: nowrap; }
+.model-row + .model-row { border-top: 1px solid var(--hairline); }
+.model-row.head { padding-top: 10px; padding-bottom: 10px; border-top: 1px solid var(--hairline); color: var(--text-3); font-size: 12px; font-weight: 600; }
+.model-name { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.model-text { min-width: 0; }
+.model-id { overflow: hidden; color: var(--text); font: 600 13.5px var(--mono); white-space: nowrap; text-overflow: ellipsis; }
+.model-sub { margin-top: 2px; overflow: hidden; color: var(--text-3); font-size: 12.5px; white-space: nowrap; text-overflow: ellipsis; }
+.model-share { display: flex; align-items: center; gap: 12px; }
+.share-track { flex: 1; height: 6px; overflow: hidden; border-radius: var(--r-pill); background: var(--codex-track); }
+.share-track span { display: block; height: 100%; min-width: 3px; border-radius: inherit; background: var(--codex-grad); transition: width .5s var(--ease-out-quart); }
+.claude .share-track { background: var(--claude-track); }
+.claude .share-track span { background: var(--claude); }
+.share-value { min-width: 48px; color: var(--text-2); font-size: 13px; text-align: right; }
+.model-tokens { font-size: 14px; font-weight: 600; }
+.model-muted { color: var(--text-2); font-size: 13px; }
+.model-empty { padding: 18px var(--panel-x) 14px; border-top: 1px solid var(--hairline); color: var(--text-3); font-size: 13px; }
+.count-pill {padding: 2px 9px; border-radius: var(--r-pill); background: var(--fill); color: var(--text-2); font-size: 12px; font-weight: 550; letter-spacing: 0; font-variant-numeric: tabular-nums; }
 .quiet-button { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 16px; border-radius: var(--r-pill); font-size: 13px; white-space: nowrap; transition: background-color .2s, transform .1s ease-out; }
 .quiet-button:active { transform: scale(.97); }
 .quiet-button svg { width: 16px; height: 16px; }
@@ -403,7 +423,7 @@ dialog li { margin: 6px 0; }
 .source-description b { color: var(--text); font-weight: 600; }
 
 /* ---------- Compact window ---------- */
-.compact .nav-links, .compact .sync-state, .compact .hero p, .compact .eyebrow, .compact .range-control, .compact .section-label.spaced, .compact #summary-stats, .compact .chart-panel, .compact .page-footer, .compact .table-toolbar, .compact .table-footer, .compact .session-panel .panel-heading p, .compact #export-button, .compact th:nth-child(n+2), .compact td:nth-child(n+2) { display: none; }
+.compact .nav-links, .compact .sync-state, .compact .hero p, .compact .eyebrow, .compact .range-control, .compact .section-label.spaced, .compact #summary-stats, .compact .chart-panel, .compact .model-panel, .compact .page-footer, .compact .table-toolbar, .compact .table-footer, .compact .session-panel .panel-heading p, .compact #export-button, .compact th:nth-child(n+2), .compact td:nth-child(n+2) { display: none; }
 .compact th:nth-child(3), .compact td:nth-child(3) { display: table-cell; }
 .compact .nav-actions { margin-left: auto; padding-left: 0; border-left: 0; }
 .compact .hero { padding: 22px 0 18px; }
@@ -423,6 +443,8 @@ dialog li { margin: 6px 0; }
   .stat:nth-child(odd) { border-left: 0; }
   .stat:nth-child(n+3) { border-top: 1px solid var(--hairline); }
   .agent-title { max-width: 240px; }
+  .model-row { grid-template-columns: minmax(0, 1.4fr) minmax(110px, 1.6fr) 72px 112px 68px; }
+  .model-row > :nth-child(6) { display: none; }
 }
 @media (max-width: 760px) {
   .provider-grid { grid-template-columns: 1fr; }
@@ -442,6 +464,14 @@ dialog li { margin: 6px 0; }
   th:nth-child(2), td:nth-child(2), th:nth-child(4), td:nth-child(4), th:nth-child(5), td:nth-child(5) { display: none; }
   .agent-title { max-width: 190px; }
   .usage-chart { height: 200px; }
+  /* Model list keeps name, share and tokens; the bar gives way to the percentage. */
+  .model-row { grid-template-columns: minmax(0, 1fr) 46px 54px; gap: 10px; }
+  .model-row > :nth-child(n+4) { display: none; }
+  .model-name { gap: 10px; }
+  .model-id { font-size: 12.5px; }
+  .model-sub { font-size: 12px; }
+  .share-track { display: none; }
+  .share-value { min-width: 0; }
   .table-footer, .page-footer { flex-direction: column; align-items: flex-start; gap: 4px; }
   .table-footer { padding-bottom: 12px; }
   .quota-window { padding-right: 14px; }

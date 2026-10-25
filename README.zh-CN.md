@@ -26,7 +26,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark-zh.png">
-    <img src="docs/images/dashboard-light-zh.png" width="880" alt="完整面板：账户额度、用量概览与 7 天用量轨迹">
+    <img src="docs/images/dashboard-light-zh.png" width="880" alt="完整面板：账户额度、用量概览、7 天用量轨迹与模型用量">
   </picture>
   <br>
   <sub>截图使用演示数据。</sub>
@@ -35,7 +35,7 @@
 ## 亮点
 
 - 🪟 **桌面小组件**：毛玻璃横条实时模糊背后的内容，品牌色圆环显示剩余百分比和各自的重置时间。
-- 📊 **完整面板**：账户额度、token 用量、缓存命中率、7 天用量轨迹和每个 agent 会话，支持浅色与深色。
+- 📊 **完整面板**：账户额度、token 用量、缓存命中率、7 天用量轨迹、各模型用量和每个 agent 会话，支持浅色与深色。
 - 🔒 **只在本机**：读取你自己的 Codex / Claude Code 日志，仅绑定 127.0.0.1，不保存提示词或登录凭据。
 - 📌 **不打扰**：一键置顶、靠近屏幕边缘自动贴边，服务停了会自己重启。
 - 🌐 **中文 / English**：面板默认跟随浏览器语言，小组件默认跟随 Windows 语言，都能一键切换。
@@ -55,6 +55,7 @@
 - Codex：增量读取 `~/.codex/sessions/**/*.jsonl`，从 `session_index.jsonl` 读取标题。优先使用 `token_usage_record` 的请求用量，老版本退回 `token_count` 累计值差分。按 response ID 去重，排除其他 thread 的继承记录，识别父子 agent。
 - Claude Code：增量读取 `~/.claude/projects/**/*.jsonl`。按 message ID 合并同一响应的流式记录，跨复制/续接会话去重，读取子 agent 文件。
 - 输入包含缓存读取和写入；输出包含推理。缓存和推理不能再次加到合计中。跨平台统一口径为 `input + output`。
+- “模型用量”按每次请求实际使用的模型累计，中途切换模型的会话会分别计入各个模型；它跟随时间范围、平台筛选和系统审查 agent 开关。
 - 默认隐藏系统审查 agent；可在表格下方开启。系统审查 token 记录不等于订阅额度消耗。
 - 统计范围包含本机尚未归档的会话。不是全部云端活动，不是账单。显示的“最近活跃”基于 2 分钟内的记录，不是进程检测。
 - 日期范围和图表采用 America/New_York 时区。账户额度始终是平台自身的窗口，不受 token 统计日期筛选影响。
