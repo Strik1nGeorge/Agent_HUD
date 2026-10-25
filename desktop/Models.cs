@@ -72,8 +72,8 @@ namespace AgentHud
             var result = new RingValue { Caption = Lang.T("等待数据", "Waiting for data"), Detail = Lang.T("等待平台提供额度，未将未知值当作零。", "Waiting for the platform to report its quota; an unknown value is never treated as zero.") };
             if (provider == null) return result;
             var limits = provider.limits;
-            var win = limits == null || limits.windows == null ? null : limits.windows.FirstOrDefault(w => w.windowMinutes == period);
-            if (win == null || !win.remainingPercent.HasValue || Double.IsNaN(win.remainingPercent.Value) || Double.IsInfinity(win.remainingPercent.Value))
+            var win = PickWindow(limits == null ? null : limits.windows, period);
+            if (win == null)
             {
                 result.Status = provider.quotaStatus == "desktop-connection-disabled" ? RingStatus.Setup : provider.quotaStatus == "desktop-not-connected" ? RingStatus.NotLinked : RingStatus.Unavailable;
                 result.Caption = result.Status == RingStatus.Setup ? Lang.T("等待连接", "Connection not enabled") : result.Status == RingStatus.NotLinked ? Lang.T("桌面版未接入", "Desktop app not linked") : Lang.T("额度未提供", "Quota not provided");
@@ -100,9 +100,27 @@ namespace AgentHud
             if (limits.source == "Codex 官方额度接口") result.Detail += Lang.T("\n正常约每 1 分钟查询，连接失败时可能延迟。", "\nNormally queried about once a minute; may lag when the connection fails.");
             else if (limits.source == "Claude 桌面账户额度") result.Detail += Lang.T("\n正常约每 5 分钟查询，连接失败时可能延迟。", "\nNormally queried about every 5 minutes; may lag when the connection fails.");
             result.Detail += Lang.T("\n同一平台账户内共享，非单个 agent 的独立额度。", "\nShared across the platform account, not a per-agent quota.");
+            if (win.windowMinutes != period)
+                result.Detail += Lang.T("\n此账户没有" + PeriodName(period, false) + "额度，这里显示的是" + PeriodName(win.windowMinutes ?? 0, false) + "额度。",
+                    "\nThis account has no " + PeriodName(period, true) + " quota; showing its " + PeriodName(win.windowMinutes ?? 0, true) + " quota instead.");
             if (!String.IsNullOrEmpty(provider.quotaMessage)) result.Detail += "\n" + Lang.Server(provider.quotaMessage);
             if (result.Stale) result.Caption = Lang.T("快照 · ", "Snapshot · ") + result.Caption;
             return result;
+        }
+        // Plans differ: the free plan reports one 30-day window instead of 5 h / 7 d. The selected window wins;
+        // without it the ring shows the account's nearest window rather than nothing, and the tooltip says so.
+        static QuotaWindow PickWindow(List<QuotaWindow> windows, int period)
+        {
+            if (windows == null) return null;
+            var usable = windows.Where(w => w != null && w.remainingPercent.HasValue && !Double.IsNaN(w.remainingPercent.Value) && !Double.IsInfinity(w.remainingPercent.Value)).ToList();
+            return usable.FirstOrDefault(w => w.windowMinutes == period)
+                ?? usable.Where(w => w.windowMinutes > 0).OrderBy(w => Math.Abs(Math.Log(w.windowMinutes.Value / period))).FirstOrDefault();
+        }
+        static string PeriodName(double minutes, bool english)
+        {
+            if (minutes > 0 && minutes % 1440 == 0) return english ? (minutes / 1440) + "-day" : " " + (minutes / 1440) + " 天";
+            if (minutes > 0 && minutes % 60 == 0) return english ? (minutes / 60) + "-hour" : " " + (minutes / 60) + " 小时";
+            return english ? minutes + "-minute" : " " + minutes + " 分钟";
         }
         public static string UpdatedText(double? collectedAt, double now)
         {
@@ -135,8 +153,11 @@ namespace AgentHud
             if (!reset.HasValue || resetsAt <= now) return null;
             var clock = reset.Value.ToString("HH:mm", CultureInfo.InvariantCulture);
             if (resetsAt - now < 86400000) return Lang.T(clock + " 重置", "Resets " + clock);
+            var daysAhead = (reset.Value.Date - LocalTime(now).Value.Date).TotalDays;
+            // Longer windows (the free plan's 30 days) reset weeks out, where a weekday would mislead: show the date.
+            if (daysAhead >= 13) { var date = reset.Value.ToString("M/d", CultureInfo.InvariantCulture); return Lang.T(date + " 重置", "Resets " + date); }
             // A 7-day window can land on today's weekday next week. ("Resets next Thu" won't fit; "Next Thu" does.)
-            var nextWeek = (reset.Value.Date - LocalTime(now).Value.Date).TotalDays >= 7;
+            var nextWeek = daysAhead >= 7;
             var day = (int)reset.Value.DayOfWeek;
             return nextWeek ? Lang.T("下" + WeekDaysZh[day] + "重置", "Next " + WeekDaysEn[day]) : Lang.T(WeekDaysZh[day] + "重置", "Resets " + WeekDaysEn[day]);
         }

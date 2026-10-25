@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { usageOf, newSession, consumeCodex, consumeClaude, sessionRecords, codexLimits, claudeLimits } from '../lib/metrics.mjs';
+import { usageOf, newSession, consumeCodex, consumeClaude, sessionRecords, codexLimits, claudeLimits, windowLabel } from '../lib/metrics.mjs';
 
 test('Codex cached input and reasoning are subsets, not additional usage', () => {
   assert.deepEqual(usageOf({ input_tokens: 1000, cached_input_tokens: 800, output_tokens: 100, reasoning_output_tokens: 70, total_tokens: 1100 }), { input:1000,cached:800,cacheWrite:0,output:100,reasoning:70,total:1100 });
@@ -50,6 +50,12 @@ test('Missing quota is unknown while zero percent used means 100 percent remaini
   const result=codexLimits({primary:{used_percent:0,window_minutes:300,resets_at:123}},1,'test');
   assert.equal(result.windows[0].remainingPercent,100);assert.equal(result.windows[0].resetsAt,123000);
   assert.equal(claudeLimits({five_hour:{used_percentage:107,resets_at:123}},1).windows[0].remainingPercent,0);
+});
+test('Quota windows are named by their length, including the free plan\'s 30-day window', () => {
+  const free=codexLimits({rateLimits:{primary:{usedPercent:0,windowDurationMins:43200,resetsAt:1795000000}},planType:'free'},1,'api');
+  assert.deepEqual(free.windows.map(w=>[w.name,w.windowMinutes,w.remainingPercent]),[['30 天',43200,100]]);
+  assert.deepEqual([300,10080,90,45].map(windowLabel),['5 小时','7 天','90 分钟','45 分钟']);
+  assert.equal(windowLabel(120),'2 小时');
 });
 test('All named Codex quota buckets are retained', () => {
   const result=codexLimits({rateLimits:{primary:{usedPercent:99}},rateLimitsByLimitId:{codex:{primary:{usedPercent:20,windowDurationMins:300}},special:{limitName:'Special',secondary:{usedPercent:50,windowDurationMins:10080}}}},1,'api');

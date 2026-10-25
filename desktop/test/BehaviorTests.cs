@@ -72,6 +72,12 @@ namespace AgentHud.Tests
             Check(line.Text == "Codex 剩余", "missing reset time falls back to the platform name");
             provider.limits.windows[0].resetsAt = now - 1;
             Check(!RingValue.From(provider, 300, now, true).Percent.HasValue, "expired quota is not shown as a live percentage");
+            var free = new Provider { id = "codex", limits = new Limits { collectedAt = now - 60000, staleAfterMs = 360000, source = "Codex 官方额度接口", windows = new List<QuotaWindow> {
+                new QuotaWindow { windowMinutes = 43200, remainingPercent = 100, resetsAt = now + 30 * 86400000.0 } } } };
+            var freeRing = RingValue.From(free, 300, now, true);
+            Check(freeRing.Percent == 100 && RingValue.From(free, 10080, now, true).Percent == 100 && freeRing.Detail.Contains("此账户没有 5 小时额度，这里显示的是 30 天额度"), "an account with only a 30-day window shows it under 5h and 7d and says so");
+            Check(RingValue.ResetBadge(stamp(new DateTime(2026, 11, 24, 14, 2, 0, DateTimeKind.Local)), monday) == "11/24 重置", "a reset weeks away shows its date instead of a weekday");
+            Check(!RingValue.From(ProviderAt(now), 300, now, true).Detail.Contains("此账户没有"), "an account with the selected window shows no fallback note");
 
             Lang.Apply("en");
             try
@@ -82,6 +88,7 @@ namespace AgentHud.Tests
                 Check(RingValue.ResetBadge(stamp(new DateTime(2026, 10, 19, 14, 30, 0, DateTimeKind.Local)), monday) == "Resets 14:30", "English reset within a day shows its clock time");
                 Check(RingValue.ResetBadge(stamp(new DateTime(2026, 10, 22, 9, 0, 0, DateTimeKind.Local)), monday) == "Resets Thu", "English reset days away shows the weekday");
                 Check(RingValue.ResetBadge(stamp(new DateTime(2026, 10, 26, 9, 0, 0, DateTimeKind.Local)), monday) == "Next Mon", "English next-week reset fits the strip");
+                Check(RingValue.ResetBadge(stamp(new DateTime(2026, 11, 24, 14, 2, 0, DateTimeKind.Local)), monday) == "Resets 11/24" && RingValue.From(free, 300, now, true).Detail.Contains("no 5-hour quota; showing its 30-day quota"), "English names the fallback window and dates a distant reset");
                 var enLabel = new QuotaLabel("Codex");
                 var enValue = (System.Windows.Controls.TextBlock)enLabel.Children[0];
                 var enLine = (System.Windows.Controls.TextBlock)enLabel.Children[1];

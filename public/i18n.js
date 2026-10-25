@@ -283,8 +283,11 @@ export function server(text) {
   if (lang !== 'en' || text == null) return text;
   const known = SERVER_TEXT[text];
   if (known) return known;
-  const minutes = /^(\d+) 分钟$/.exec(text);
-  return minutes ? `${minutes[1]} min` : text;
+  // Window lengths the service names generically, such as the free plan's "30 天".
+  const span = /^(\d+) (分钟|小时|天)$/.exec(text);
+  if (!span) return text;
+  const n = Number(span[1]);
+  return `${n} ${span[2] === '分钟' ? 'min' : span[2] === '小时' ? (n === 1 ? 'hour' : 'hours') : (n === 1 ? 'day' : 'days')}`;
 }
 
 export function applyStatic(root = document) {
