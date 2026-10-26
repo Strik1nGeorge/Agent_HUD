@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { Collector } from './lib/collector.mjs';
 import { CodexQuota } from './lib/codex-rpc.mjs';
 import { ClaudeDesktopQuota } from './lib/claude-desktop.mjs';
+import { providerActivity } from './lib/activity.mjs';
 
 // Match desktop applications' Windows trust store without weakening HTTPS validation.
 if (process.platform === 'win32' && typeof tls.getCACertificates === 'function' && typeof tls.setDefaultCACertificates === 'function') {
@@ -68,7 +69,10 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/quotas') {
       const data = snapshot();
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.end(JSON.stringify({ providers: data.providers, collectedAt: data.collectedAt, loading: data.loading, timeZone: data.timeZone })); return;
+      // The widget gets each platform's live activity (for its pets and hover cards) instead of every session record.
+      const now = Date.now();
+      const providers = data.providers.map(p => ({ ...p, activity: providerActivity(data.sessions, p.id, now, data.timeZone) }));
+      res.end(JSON.stringify({ providers, collectedAt: data.collectedAt, loading: data.loading, timeZone: data.timeZone })); return;
     }
     if (url.pathname === '/api/health') {
       res.setHeader('Content-Type', 'application/json');
@@ -85,7 +89,7 @@ const server = http.createServer(async (req, res) => {
   } catch { res.writeHead(500); res.end('Temporarily unavailable'); }
 });
 
-server.listen(port, '127.0.0.1', () => console.log(`Agent HUD · http://127.0.0.1:${port}`));
+server.listen(port, '127.0.0.1', () => console.log(`Agent Meter · http://127.0.0.1:${port}`));
 server.on('error', e => { console.error(e.code === 'EADDRINUSE' ? `端口 ${port} 已被使用，请设置 PORT 后重试。` : e.message); quota.close(); claudeQuota.close(); process.exit(1); });
 const refresh = () => collector.refresh().catch(() => { collector.value.error = '本地数据扫描失败，稍后重试'; });
 void refresh();

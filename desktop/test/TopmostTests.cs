@@ -114,6 +114,26 @@ namespace AgentHud.Tests
                     Check(NativePinned(hud), "language switch keeps the window pinned");
                     Click(hud, "LanguageButton");
                     Check(Header(hud, 4) == "始终置顶" && AutomationProperties.GetName(FindButton(hud, "LanguageButton")) == "Switch to English", "a second click switches back to Chinese");
+                    // Docking: flush against the left edge of the screen the strip becomes a column; moved off, a strip again.
+                    var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                    var place = (WindowPlacement)typeof(HudWindow).GetField("placement", flags).GetValue(hud);
+                    var checkDock = typeof(HudWindow).GetMethod("CheckDock", flags);
+                    var work = BehaviorTests.WorkAreaOf(hud);
+                    Rect before; place.TryGetRect(out before);
+                    SetWindowPos(handle, IntPtr.Zero, (int)work.Left, (int)before.Top, 0, 0, 0x0215); Pump();
+                    checkDock.Invoke(hud, null); Pump(); Pump();
+                    Rect docked; place.TryGetRect(out docked);
+                    Console.WriteLine("Docked rect " + docked + " in work area " + work + "; size " + hud.Width + "x" + hud.Height + ", edge " + place.SideEdge());
+                    // Sizes snap to whole physical pixels, so compare within a pixel.
+                    Check(Math.Abs(hud.Width - 58) < 1 && Math.Abs(hud.Height - 290) < 1 && place.SideEdge() == "left" && docked.Left == work.Left && docked.Top >= work.Top && docked.Bottom <= work.Bottom, "against the left edge the strip becomes a column, flush with that edge");
+                    Click(hud, "MoreButton");
+                    var sideMenu = Menu(hud);
+                    var menuLeft = sideMenu.PointToScreen(new Point(14, 14)).X;
+                    Check(sideMenu.IsOpen && menuLeft > docked.Right && menuLeft - docked.Right < 20, "in the column the menu opens beside it, toward the screen");
+                    sideMenu.IsOpen = false; Pump();
+                    SetWindowPos(handle, IntPtr.Zero, (int)work.Left + 300, (int)docked.Top, 0, 0, 0x0215); Pump();
+                    checkDock.Invoke(hud, null); Pump(); Pump();
+                    Check(Math.Abs(hud.Width - 282) < 1 && Math.Abs(hud.Height - 52) < 1 && place.SideEdge() == null, "moved off the edge, it turns back into a strip");
                     var foreground = GetForegroundWindow();
                     // Reproduce a native z-order change without changing WPF's cached Topmost value.
                     Check(SetWindowPos(handle, new IntPtr(-2), 0, 0, 0, 0, 0x213), "native demotion succeeded");

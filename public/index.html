@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark"><meta name="description" content="本地 Agent 用量与账户额度监控">
-  <title>Agent HUD · 用量控制台</title><link rel="icon" href="/icon.svg"><link rel="stylesheet" href="/styles.css">
+  <title>Agent Meter · 用量控制台</title><link rel="icon" href="/icon.svg"><link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <svg class="svg-defs" aria-hidden="true"><defs><linearGradient id="codex-brand" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b1a7ff"/><stop offset=".5" stop-color="#7a9dff"/><stop offset="1" stop-color="#3941ff"/></linearGradient></defs></svg>
   <header class="nav" id="nav">
     <div class="nav-inner">
-      <a class="brand" href="/" aria-label="Agent HUD 首页" data-i18n-attr="aria-label:brand.home"><img src="/icon.svg" alt=""><span>Agent HUD</span></a>
+      <a class="brand" href="/" aria-label="Agent Meter 首页" data-i18n-attr="aria-label:brand.home"><img src="/icon.svg" alt=""><span>Agent Meter</span></a>
       <nav class="nav-links" aria-label="主导航" data-i18n-attr="aria-label:nav.main">
         <button class="nav-item active" data-view="overview" data-i18n="nav.overview">总览</button>
         <button class="nav-item" data-view="sessions"><span data-i18n="nav.sessions">会话</span> <span class="nav-count" id="nav-count">—</span></button>
@@ -26,7 +26,7 @@
   </header>
   <main>
     <section class="hero">
-      <div class="eyebrow"><span class="live-dot"></span>AGENT HUD · <span id="breadcrumb-current">总览</span></div>
+      <div class="eyebrow"><span class="live-dot"></span>AGENT METER · <span id="breadcrumb-current">总览</span></div>
       <div class="hero-row">
         <div><h1 id="page-title">每一份算力，都看得见</h1><p id="page-subtitle">一个视野，掌握各平台用量与剩余额度。</p></div>
         <div class="seg range-control" role="group" aria-label="统计时间范围" data-i18n-attr="aria-label:range.aria"><span class="seg-thumb" aria-hidden="true"></span><button data-range="today" data-i18n="range.today">今天</button><button data-range="7d" class="selected" data-i18n="range.7d">7 天</button><button data-range="30d" data-i18n="range.30d">30 天</button><button data-range="all" data-i18n="range.all">全部</button></div>

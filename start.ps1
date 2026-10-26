@@ -20,5 +20,5 @@ if (-not $taskHealthy) {
     try { $taskHealthy = (Invoke-RestMethod -Uri "$taskUrl/api/health" -TimeoutSec 1).ok; if ($taskHealthy) { break } } catch {}
   }
 }
-if ($taskHealthy) { if (-not $NoBrowser) { Start-Process $taskUrl }; Write-Host "Agent HUD: $taskUrl" }
+if ($taskHealthy) { if (-not $NoBrowser) { Start-Process $taskUrl }; Write-Host "Agent Meter: $taskUrl" }
 else { throw 'Startup failed. Check .data/server-error.log.' }

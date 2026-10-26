@@ -18,9 +18,9 @@ export function setLang(next) {
 
 const STRINGS = {
   zh: {
-    'doc.title': 'Agent HUD · 用量控制台',
+    'doc.title': 'Agent Meter · 用量控制台',
     'meta.description': '本地 Agent 用量与账户额度监控',
-    'brand.home': 'Agent HUD 首页',
+    'brand.home': 'Agent Meter 首页',
     'nav.main': '主导航',
     'nav.overview': '总览',
     'nav.sessions': '会话',
@@ -114,7 +114,7 @@ const STRINGS = {
     'conn.explainer': '<h2>这些数字，代表什么？</h2><p><b>平台额度</b>：来自平台返回的剩余百分比，供同一账户内的 agent 共享。超过重置时间的数据会等待更新，不会自动当作 100%。</p><p><b>Token 用量</b>：只统计本机未归档的会话记录。输入包含缓存，输出包含推理；重复响应去重。它不是账单金额，也不是平台额度的百分比。</p><p><b>最近活跃</b>：过去 2 分钟出现过活动记录，不代表进程一定仍在运行。上下文列是最后一次请求快照。</p><p><b>更多平台</b>：在 lib/collector.mjs 中增加 provider，并输出统一的 session / records / limits 结构即可扩展。当前已实现 Codex 与 Claude Code。</p><p>统计时区：America/New_York。关于 Claude 额度字段，请参阅 <a href="https://code.claude.com/docs/en/statusline" target="_blank" rel="noreferrer">官方状态栏文档 ↗</a>。</p>',
     'theme.auto': '跟随系统', 'theme.light': '浅色', 'theme.dark': '深色',
     'theme.title': '外观：{name} · 点击切换', 'theme.toast': '外观：{name}',
-    'error.offline': '本地服务暂时无法连接，当前显示最后一次快照。请确认 Agent HUD 服务仍在运行。',
+    'error.offline': '本地服务暂时无法连接，当前显示最后一次快照。请确认 Agent Meter 服务仍在运行。',
     'setup.eyebrow': '接入 CLAUDE CODE CLI', 'setup.close': '关闭接入说明',
     'setup.title': '通过终端版接入 Claude 额度',
     'setup.intro': '此桥接使用 Claude Code CLI 的状态栏回调。桌面版需启用单独的账户连接，不能通过安装终端状态栏来接入。',
@@ -129,9 +129,9 @@ const STRINGS = {
     'csv.headers': '平台|会话|项目|模型|范围|输入|输出|缓存读取|缓存写入|合计|最后活动',
   },
   en: {
-    'doc.title': 'Agent HUD · Usage console',
+    'doc.title': 'Agent Meter · Usage console',
     'meta.description': 'Local agent usage and account quota monitor',
-    'brand.home': 'Agent HUD home',
+    'brand.home': 'Agent Meter home',
     'nav.main': 'Main navigation',
     'nav.overview': 'Overview',
     'nav.sessions': 'Sessions',
@@ -225,7 +225,7 @@ const STRINGS = {
     'conn.explainer': '<h2>What do these numbers mean?</h2><p><b>Platform quota</b>: the remaining percentage each platform reports, shared by every agent on the same account. Data past its reset time waits for an update instead of being assumed to be 100%.</p><p><b>Token usage</b>: counts only session logs on this machine that have not been archived. Input includes cache; output includes reasoning; duplicate responses are removed. It is not a bill and not a percentage of the platform quota.</p><p><b>Recently active</b>: activity within the last 2 minutes, which does not prove a process is still running. The context column is the latest request snapshot.</p><p><b>More platforms</b>: add a provider in lib/collector.mjs that outputs the shared session / records / limits structure. Codex and Claude Code are implemented today.</p><p>Time zone: America/New_York. For Claude quota fields, see the <a href="https://code.claude.com/docs/en/statusline" target="_blank" rel="noreferrer">status line documentation ↗</a>.</p>',
     'theme.auto': 'System', 'theme.light': 'Light', 'theme.dark': 'Dark',
     'theme.title': 'Appearance: {name} · click to change', 'theme.toast': 'Appearance: {name}',
-    'error.offline': "Can't reach the local service; showing the last snapshot. Make sure the Agent HUD service is running.",
+    'error.offline': "Can't reach the local service; showing the last snapshot. Make sure the Agent Meter service is running.",
     'setup.eyebrow': 'CONNECT CLAUDE CODE CLI', 'setup.close': 'Close setup guide',
     'setup.title': 'Connect the Claude quota through the terminal CLI',
     'setup.intro': "This bridge uses the Claude Code CLI's status-line callback. The desktop app needs its own account connection; installing the terminal status line does not connect it.",

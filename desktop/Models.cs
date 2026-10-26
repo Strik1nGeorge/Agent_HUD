@@ -20,9 +20,22 @@ namespace AgentHud
         public string quotaStatus { get; set; }
         public string quotaMessage { get; set; }
         public Limits limits { get; set; }
+        public Activity activity { get; set; }
+    }
+    // What the platform's agents are doing now (from lib/activity.mjs): drives the pets and the hover card.
+    public class Activity
+    {
+        public bool working { get; set; }
+        public int activeSessions { get; set; }
+        public double todayTokens { get; set; }
+        public int todayRequests { get; set; }
+        public double? lastActiveAt { get; set; }
+        public string model { get; set; }
+        public string effort { get; set; }
     }
     public class Limits
     {
+        public string plan { get; set; }
         public List<QuotaWindow> windows { get; set; }
         public double? collectedAt { get; set; }
         public string source { get; set; }
@@ -47,6 +60,8 @@ namespace AgentHud
         public int period { get; set; }
         // "auto" (follow Windows), "zh" or "en".
         public string language { get; set; }
+        // "left" / "right" when docked to that side of the screen (vertical layout); null otherwise.
+        public string dock { get; set; }
         public WidgetState() { pinned = true; period = 300; language = "auto"; }
     }
     public static class RingStatus
@@ -109,7 +124,7 @@ namespace AgentHud
         }
         // Plans differ: the free plan reports one 30-day window instead of 5 h / 7 d. The selected window wins;
         // without it the ring shows the account's nearest window rather than nothing, and the tooltip says so.
-        static QuotaWindow PickWindow(List<QuotaWindow> windows, int period)
+        public static QuotaWindow PickWindow(List<QuotaWindow> windows, int period)
         {
             if (windows == null) return null;
             var usable = windows.Where(w => w != null && w.remainingPercent.HasValue && !Double.IsNaN(w.remainingPercent.Value) && !Double.IsInfinity(w.remainingPercent.Value)).ToList();
@@ -145,21 +160,21 @@ namespace AgentHud
             try { return Epoch.AddMilliseconds(stamp).ToLocalTime(); }
             catch (ArgumentOutOfRangeException) { return null; }
         }
-        // Short form for the strip (≤ 52 DIP): the clock time within a day, the weekday beyond it,
-        // like Claude's own usage page. The exact countdown and date stay in the tooltip.
-        public static string ResetBadge(double resetsAt, double now)
+        // Shortest form, for inside the ring (about 30 DIP across): the clock time within a day, the weekday
+        // within the coming week, otherwise the date. The countdown and full date are in the hover card.
+        public static string RingBadge(double resetsAt, double now)
         {
             var reset = LocalTime(resetsAt);
             if (!reset.HasValue || resetsAt <= now) return null;
-            var clock = reset.Value.ToString("HH:mm", CultureInfo.InvariantCulture);
-            if (resetsAt - now < 86400000) return Lang.T(clock + " 重置", "Resets " + clock);
-            var daysAhead = (reset.Value.Date - LocalTime(now).Value.Date).TotalDays;
-            // Longer windows (the free plan's 30 days) reset weeks out, where a weekday would mislead: show the date.
-            if (daysAhead >= 13) { var date = reset.Value.ToString("M/d", CultureInfo.InvariantCulture); return Lang.T(date + " 重置", "Resets " + date); }
-            // A 7-day window can land on today's weekday next week. ("Resets next Thu" won't fit; "Next Thu" does.)
-            var nextWeek = daysAhead >= 7;
-            var day = (int)reset.Value.DayOfWeek;
-            return nextWeek ? Lang.T("下" + WeekDaysZh[day] + "重置", "Next " + WeekDaysEn[day]) : Lang.T(WeekDaysZh[day] + "重置", "Resets " + WeekDaysEn[day]);
+            if (resetsAt - now < 86400000) return reset.Value.ToString("HH:mm", CultureInfo.InvariantCulture);
+            // A weekday is only unambiguous within the next six days; a 7-day window's same-weekday reset gets its date.
+            if ((reset.Value.Date - LocalTime(now).Value.Date).TotalDays < 7) { var day = (int)reset.Value.DayOfWeek; return Lang.T(WeekDaysZh[day], WeekDaysEn[day]); }
+            return reset.Value.ToString("M/d", CultureInfo.InvariantCulture);
+        }
+        public static string Stamp(double time)
+        {
+            var date = LocalTime(time);
+            return date.HasValue ? date.Value.ToString("MM-dd HH:mm", CultureInfo.InvariantCulture) : "";
         }
         public static string ResetText(double milliseconds)
         {

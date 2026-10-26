@@ -31,12 +31,12 @@ try {
   // Only the allowlisted counters are persisted, never the full status-line payload.
   await fs.writeFile(tmp, JSON.stringify({ session_id: sessionId, collectedAt: Date.now(), rate_limits: limits, context }), { mode: 0o600 });
   await fs.rename(tmp, target);
-  const parts = ['Agent HUD'];
+  const parts = ['Agent Meter'];
   if (limits.five_hour) parts.push(`5h left ${Math.round(100 - limits.five_hour.used_percentage)}%`);
   if (limits.seven_day) parts.push(`7d left ${Math.round(100 - limits.seven_day.used_percentage)}%`);
   if (context) parts.push(`ctx ${Math.round(context.percent)}%`);
   process.stdout.write(parts.join(' | '));
 } catch {
   // A status-line failure must never interrupt Claude Code.
-  process.stdout.write('Agent HUD | waiting for usage');
+  process.stdout.write('Agent Meter | waiting for usage');
 }

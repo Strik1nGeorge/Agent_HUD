@@ -34,6 +34,9 @@ namespace AgentHud
         readonly Action save;
         HwndSource source;
         bool pending, dragging, disposed;
+        // Raised once a position has settled (after load, a drag, or a display change), so the widget can
+        // pick its layout for where it ended up.
+        public event Action Settled;
 
         public WindowPlacement(Window window, WidgetState saved, Action save)
         {
@@ -96,6 +99,42 @@ namespace AgentHud
             if (y - work.Top <= snap) y = work.Top; else if (bottom - y <= snap) y = bottom;
             return new Rect(x, y, window.Width, window.Height);
         }
+        // "left" / "right" when the window sits against that side of its work area (within tolerance, in the same units).
+        public static string SideEdge(Rect window, Rect work, double tolerance)
+        {
+            if (Math.Abs(window.Left - work.Left) <= tolerance) return "left";
+            if (Math.Abs(window.Right - work.Right) <= tolerance) return "right";
+            return null;
+        }
+        public string SideEdge()
+        {
+            Rect current;
+            if (!TryRect(out current)) return null;
+            var monitors = Monitors();
+            var index = NearestArea(current, monitors.Select(m => m.Work).ToArray());
+            return index < 0 ? null : SideEdge(current, monitors[index].Work, 2 * Scale());
+        }
+        public bool TryGetRect(out Rect rect) { return TryRect(out rect); }
+        // After the window changes shape (strip ⇄ column), put it back where it was: flush against the edge it
+        // docked to, or, leaving an edge, on the side of the screen it was dragged to, without touching an edge.
+        public void Reanchor(Rect before, string edge)
+        {
+            window.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(delegate
+            {
+                Rect now;
+                if (!TryRect(out now)) return;
+                var monitors = Monitors();
+                var index = NearestArea(before, monitors.Select(m => m.Work).ToArray());
+                if (index < 0) return;
+                var work = monitors[index].Work;
+                var centerX = before.Left + before.Width / 2;
+                var x = edge == "left" ? work.Left : edge == "right" ? work.Right - now.Width
+                    : centerX < work.Left + work.Width / 2 ? before.Left : before.Right - now.Width;
+                var y = before.Top + before.Height / 2 - now.Height / 2;
+                Move(Fit(new Rect(x, y, now.Width, now.Height), work, 0));
+                save();
+            }));
+        }
         static bool Fraction(double? value) { return value.HasValue && !Double.IsNaN(value.Value) && value.Value >= 0 && value.Value <= 1; }
         public static Rect AtOffset(Rect work, Size size, double x, double y)
         {
@@ -139,6 +178,7 @@ namespace AgentHud
                 if (!TryRect(out current)) return;
                 Move(AtOffset(monitor.Work, current.Size, x, y));
                 EnsureVisible(false); save();
+                if (Settled != null) Settled();
             }));
         }
         public void Reset()
@@ -157,6 +197,7 @@ namespace AgentHud
                 if (monitor != null) { PlaceOn(monitor, saved.offsetX.Value, saved.offsetY.Value); return; }
             }
             EnsureVisible(false); save();
+            if (Settled != null) Settled();
         }
         void OnSource(object sender, EventArgs e)
         {
@@ -177,7 +218,7 @@ namespace AgentHud
             window.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(delegate
             {
                 pending = false;
-                if (!disposed && !dragging) { EnsureVisible(snap); save(); }
+                if (!disposed && !dragging) { EnsureVisible(snap); save(); if (Settled != null) Settled(); }
             }));
         }
         void OnDisplaysChanged(object sender, EventArgs e)

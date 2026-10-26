@@ -234,7 +234,7 @@ function renderConnections() {
 function viewText() {
   const view=state.view;
   $('#breadcrumb-current').textContent=t(`view.${view}`);
-  $('#page-title').textContent=view==='overview'&&compact?'Agent HUD':t(`title.${view}`);
+  $('#page-title').textContent=view==='overview'&&compact?'Agent Meter':t(`title.${view}`);
   $('#page-subtitle').textContent=t(`sub.${view}`);
 }
 function switchView(view) {
@@ -324,7 +324,7 @@ $('#export-button').addEventListener('click',()=>{
   if(!state.rows.length){toast(t('toast.nothing'));return;}
   const rows=[t('csv.headers').split('|'),...state.rows.map(s=>[s.provider,s.name,server(s.project),s.model,rangeLabel(state.range),s.usage.input,s.usage.output,s.usage.cached,s.usage.cacheWrite,s.usage.total,fullTime(s.updatedAt)])];
   const url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}));
-  const a=document.createElement('a');a.href=url;a.download=`agent-hud-${calendarDay(Date.now())}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast(t('toast.exported'));
+  const a=document.createElement('a');a.href=url;a.download=`agent-meter-${calendarDay(Date.now())}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast(t('toast.exported'));
 });
 $('#copy-setup').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(setupCommand||'node scripts/connect-claude.mjs');toast(t('toast.copied'));}catch{toast(t('toast.clipboard'));}});
 $$('[data-range]').forEach(b=>b.addEventListener('click',()=>{state.range=b.dataset.range;$$('[data-range]').forEach(x=>x.classList.toggle('selected',x===b));render();placeThumbs();}));

@@ -2,7 +2,7 @@
   <img src="public/icon.svg" width="72" alt="">
 </p>
 
-<h1 align="center">Agent HUD</h1>
+<h1 align="center">Agent Meter</h1>
 
 <p align="center">
   Codex + Claude Code usage and quota at a glance — a local dashboard and a glassy Windows desktop widget.
@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/widget-en.png" width="680" alt="Desktop widget: Codex and Claude quota rings with their logos, remaining percentage and reset time">
+  <img src="docs/images/widget-hover-en.png" width="640" alt="Desktop widget: a pet and a quota ring for Codex and for Claude, with the remaining percentage and reset time inside each ring; hovering Claude shows its card with both quota windows, what its agents are doing, today's usage and the latest model">
 </p>
 
 <p align="center">
@@ -34,7 +34,7 @@
 
 ## Highlights
 
-- 🪟 **Desktop widget** — a frosted-glass strip that blurs what's behind it, with brand-colored rings, the remaining percentage and when each quota resets.
+- 🪟 **Desktop widget** — a frosted-glass strip with a brand-colored ring per platform (remaining percentage and reset time inside) and a pet that works, rests and falls asleep with its agents; hover for details, and drop it on a side of the screen for a column.
 - 📊 **Dashboard** — account quotas, token usage, cache hit rate, a seven-day chart, usage by model, thinking effort or project, and every agent session, in light or dark.
 - 🔒 **Local only** — reads your own Codex / Claude Code logs, binds to 127.0.0.1, never stores prompts or credentials.
 - 📌 **Stays out of the way** — one-click pin, snaps to screen edges, restarts its own service if it stops.
@@ -72,13 +72,30 @@ Reference: [Codex App Server documentation](https://learn.chatgpt.com/docs/app-s
 
 ## Windows desktop widget
 
+<img src="docs/images/widget-docked-en.png" width="200" align="right" alt="The widget docked against the left edge of the screen as a column: Codex's pet and ring, Claude's pet and ring, then the language, pin, period and menu buttons">
+
 The widget runs `desktop/bin/AgentHUD.exe` directly and brings the local quota service back on its own. Earlier versions launched through `Agent HUD.vbs` and `start-widget.ps1`, which antivirus software (Norton) quarantined, so the entry point no longer depends on scripts. On the first run of a freshly built exe, some antivirus products hold it for tens of seconds while scanning.
 
-The widget is a 304 × 48 DIP frosted-glass strip: it blurs whatever is behind it live, uses Windows 11's native rounded corners, scales with Windows display scaling to roughly taskbar height, and follows the Windows app light/dark theme (matching the dashboard). With Windows transparency effects off it switches to an opaque background. The rings use each brand's colors (Codex's blue-violet gradient, Claude's clay orange) with the brand's mark in the center and the remaining percentage beside it; the percentage turns red below 20%.
+The widget is a 282 × 52 DIP frosted-glass strip: it blurs whatever is behind it live, uses Windows 11's native rounded corners, scales with Windows display scaling, and follows the Windows app light/dark theme (matching the dashboard). With Windows transparency effects off it switches to an opaque background. Each platform gets a tile: its pet and a ring in the brand's colors (Codex's blue-violet gradient, Claude's clay orange), with the remaining percentage inside the ring (red below 20%) and the reset time under it.
 
-Drag empty space to move it. On release it snaps to the edge of the screen's work area when close, and it remembers the monitor and relative position. Restored positions avoid the taskbar and gaps between monitors, are corrected after display or scaling changes, and fall back to the primary screen if the original one is gone. Both the ⋯ menu and the tray menu offer *Reset widget position*.
+Each platform has a pet, and its pose says what that platform's agents are doing. Codex's is a blue-violet cloud with a `>_` mouth; Claude's is an orange blob with a sparkle on a sprout.
+- **Working:** it hops while an agent is working, meaning a session wrote to its log in the last two minutes and hasn't finished its turn. Claude's sparkle spins and Codex's cursor blinks.
+- **Idle:** it breathes and blinks.
+- **Low:** under 20% left it gets sleepy and sweats.
+- **Out of quota:** when any quota window is used up, it melts flat and falls asleep with drifting "z z Z".
+- **Offline:** when the local service is offline, it greys out.
 
-`5h` / `7d` on the right switches the quota window. Under each percentage is the quota's reset time: the clock time when it's within a day ("Resets 14:30"), otherwise the weekday ("Resets Thu", or "Next Thu" when it falls on the same weekday next week), and the date when it's two weeks or more away ("Resets 11/24"). If the account has no window of the selected length, such as ChatGPT's free plan, which reports a single 30-day window, the ring shows the window the account does have and its tooltip says so. It reads "Offline" when the local service is offline, and "Codex left" / "Claude left" when the platform gives no reset time. Hover a ring for when the quota was actually collected, how long ago that was, the reset countdown, the full date, and the source. Local snapshots are read every 5 seconds; Codex's official quota is normally queried about once a minute and Claude's desktop quota about every 5 minutes, and both may lag when connections fail. An unknown time is never shown as "just now".
+Animations pause while the widget is hidden and follow Windows' *Animation effects* setting.
+
+Hover a pet or ring for that platform's card:
+- every quota window it reports, with the one in the ring marked, each with its bar, reset countdown and date;
+- what its agents are doing and how many sessions are active;
+- today's tokens and requests, and the latest model and thinking effort;
+- where the quota came from and how fresh it is.
+
+Drag empty space to move it. On release it snaps to the edge of the screen's work area when close. Dropped against the left or right edge, it turns into a 58 × 290 DIP column, pets above rings and buttons below, and its cards and menu open toward the screen; dragged away from the edge, it becomes a strip again. It remembers the monitor, relative position and layout. Restored positions avoid the taskbar and gaps between monitors, are corrected after display or scaling changes, and fall back to the primary screen if the original one is gone. Both the ⋯ menu and the tray menu offer *Reset widget position*.
+
+`5h` / `7d` switches the quota window shown in the rings. Under each percentage is the quota's reset time: the clock time within a day ("14:30"), the weekday within the coming week ("Thu"), otherwise the date ("11/24"). If the account has no window of the selected length, such as ChatGPT's free plan, which reports a single 30-day window, the ring shows the window the account does have and the card says so. Under the number the ring reads "Offline" when the local service is offline, and "left" when the platform gives no reset time. Local snapshots are read every 5 seconds; Codex's official quota is normally queried about once a minute and Claude's desktop quota about every 5 minutes, and both may lag when connections fail. An unknown time is never shown as "just now".
 
 A solid blue pin means always-on-top; a hollow pin with a slash means not pinned. Click the pin once to pin, again to unpin. The ⋯ to the right of `5h` / `7d` opens the menu: toggle always-on-top, open the dashboard or the Codex / Claude usage pages, hide to the tray, reset the position, or quit.
 
@@ -130,7 +147,7 @@ Other platforms can be added as adapters in `lib/collector.mjs`, reusing the com
 
 `npm test` or `node --test test/*.test.mjs`. Covers cache accounting, reasoning not double-counted, streamed-response deduplication, inherited-record exclusion, empty quotas, reset times and incremental reads.
 
-Windows desktop regression: `powershell -ExecutionPolicy Bypass -File desktop/test.ps1`. It briefly shows separate test windows and uses its own state under `.data/desktop-tests`, without touching your real widget's position or settings. Covers always-on-top recovery, pin-click toggling, the ⋯ menu and its placement, the language button, not stealing focus, tray show and exit signals, update and reset-time display, positioning across monitor gaps / negative coordinates / unplugged screens / scaling, correcting real out-of-bounds windows, no rendering while hidden, and no redraw of unchanged rings. Real multi-monitor hot-plugging and dragging between monitors with different DPI still need checking on matching hardware.
+Windows desktop regression: `powershell -ExecutionPolicy Bypass -File desktop/test.ps1`. It briefly shows separate test windows and uses its own state under `.data/desktop-tests`, without touching your real widget's position or settings. Covers the ring's text, every pet mood, the hover card, docking to a side of the screen and back, always-on-top recovery, pin-click toggling, the ⋯ menu and its placement, the language button, not stealing focus, tray show and exit signals, update and reset-time display, positioning across monitor gaps / negative coordinates / unplugged screens / scaling, correcting real out-of-bounds windows, no rendering while hidden, and no redraw of unchanged rings. Real multi-monitor hot-plugging and dragging between monitors with different DPI still need checking on matching hardware.
 
 Update regression: `powershell -ExecutionPolicy Bypass -File desktop/test-launcher.ps1`, using a temporary project and background test processes. Covers first build, skipping unchanged sources, content checks when timestamps don't change, ordered replacement, and keeping the old process and binary when compilation fails; compatible with Windows PowerShell 5.1.
 

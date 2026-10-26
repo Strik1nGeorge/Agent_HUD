@@ -15,11 +15,11 @@ if (remove) {
   if (settings.statusLine?.command === command) {
     delete settings.statusLine;
   } else {
-    console.log('当前状态栏不属于 Agent HUD，未修改。');
+    console.log('当前状态栏不属于 Agent Meter，未修改。');
     process.exit(0);
   }
 } else {
-  if (settings.statusLine?.command === command) { console.log('Claude Code 已接入 Agent HUD。'); process.exit(0); }
+  if (settings.statusLine?.command === command) { console.log('Claude Code 已接入 Agent Meter。'); process.exit(0); }
   if (settings.statusLine) {
     console.error('已有自定义状态栏，未覆盖。请把 scripts/claude-statusline.mjs 加到现有状态栏脚本中，向它传递同一份 stdin JSON。');
     process.exit(1);
@@ -32,5 +32,5 @@ try { await fs.copyFile(settingsPath, backup); } catch (e) { if (e.code !== 'ENO
 const temp = `${settingsPath}.agent-hud.tmp`;
 await fs.writeFile(temp, JSON.stringify(settings, null, 2) + '\n', { mode: 0o600 });
 await fs.rename(temp, settingsPath);
-console.log(remove ? '已移除 Agent HUD 状态栏，其他设置保留。' : 'Claude Code 已接入。下次收到模型响应后，HUD 将显示可用的账户额度。');
+console.log(remove ? '已移除 Agent Meter 状态栏，其他设置保留。' : 'Claude Code 已接入。下次收到模型响应后，HUD 将显示可用的账户额度。');
 console.log(`设置备份：${backup}`);

@@ -15,4 +15,4 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const data = process.env.AGENT_HUD_DATA_DIR || path.join(root, '.data');
 await fs.mkdir(data, { recursive: true });
 await fs.writeFile(path.join(data, 'claude-desktop-connection.json'), JSON.stringify({ enabled: flag === '--enable' }) + '\n');
-console.log(`Claude Desktop quota connection ${flag === '--enable' ? 'enabled' : 'disabled'}. Restart the Agent HUD server to apply.`);
+console.log(`Claude Desktop quota connection ${flag === '--enable' ? 'enabled' : 'disabled'}. Restart the Agent Meter server to apply.`);

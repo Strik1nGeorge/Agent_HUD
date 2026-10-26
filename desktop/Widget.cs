@@ -89,8 +89,13 @@ namespace AgentHud
         readonly DispatcherTimer saveTimer = new DispatcherTimer();
         readonly QuotaRing codex = new QuotaRing { Platform = "Codex" };
         readonly QuotaRing claude = new QuotaRing { Platform = "Claude Code" };
-        readonly QuotaLabel codexLabel = new QuotaLabel("Codex");
-        readonly QuotaLabel claudeLabel = new QuotaLabel("Claude");
+        readonly AgentPet codexPet = new AgentPet(true);
+        readonly AgentPet claudePet = new AgentPet(false);
+        // Each agent is a tile, pet + ring, beside each other in the strip and stacked in the column.
+        StackPanel codexTile, claudeTile;
+        ToolTip codexTip, claudeTip;
+        Grid body;
+        bool vertical;
         readonly Border tint = new Border();
         readonly Border sheen = new Border { IsHitTestVisible = false };
         readonly Border edge = new Border { BorderThickness = new Thickness(1), IsHitTestVisible = false };
@@ -115,8 +120,7 @@ namespace AgentHud
             http = new HttpClient(new HttpClientHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(4), MaxResponseContentBufferSize = 1024 * 1024 };
             ReadState();
             Lang.Apply(saved.language);
-            Title = "Agent HUD Widget";
-            Width = 304; Height = 48;
+            Title = "Agent Meter Widget";
             WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
             // Not a layered window: DWM only honours the capsule region for the blur on regular windows.
             // The glass frame spans the whole client area so transparent pixels show the blurred backdrop.
@@ -141,6 +145,7 @@ namespace AgentHud
                 File.AppendAllText(Path.Combine(dataDir, "widget-error.log"), DateTime.UtcNow.ToString("o") + " Window pin: Win32 error " + error + Environment.NewLine);
             });
             placement = new WindowPlacement(this, saved, SaveState);
+            placement.Settled += CheckDock;
             SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
             File.AppendAllText(Path.Combine(dataDir, "widget-startup.log"), "UI constructed\n");
             SetupTray();
@@ -166,8 +171,8 @@ namespace AgentHud
             timer.Tick += async delegate { await Fetch(); };
             IsVisibleChanged += delegate
             {
-                if (IsVisible) RenderData();
-                else { codex.PauseAnimation(); claude.PauseAnimation(); }
+                if (IsVisible) { codexPet.Resume(); claudePet.Resume(); RenderData(); }
+                else { codex.PauseAnimation(); claude.PauseAnimation(); codexPet.Pause(); claudePet.Pause(); }
             };
             capsule.ToolTipOpening += delegate { RenderData(); };
             Closing += delegate
@@ -204,9 +209,9 @@ namespace AgentHud
             palette.ApplyTo(Application.Current.Resources);
             tint.Background = palette.Tint; sheen.Background = palette.Sheen; edge.BorderBrush = palette.Edge;
             rim.BorderBrush = degraded ? palette.RimOffline : palette.Rim;
-            codex.Logo = Logos.Codex; codex.ArcBrush = palette.CodexArc; codex.LogoBrush = palette.CodexLogo; codex.Track = palette.CodexTrack;
-            claude.Logo = Logos.Claude; claude.ArcBrush = palette.ClaudeArc; claude.LogoBrush = palette.ClaudeLogo; claude.Track = palette.ClaudeTrack;
-            codex.InvalidateVisual(); claude.InvalidateVisual();
+            codex.ArcBrush = palette.CodexArc; codex.Track = palette.CodexTrack;
+            claude.ArcBrush = palette.ClaudeArc; claude.Track = palette.ClaudeTrack;
+            foreach (var ring in new[] { codex, claude }) { ring.TextBrush = new SolidColorBrush(palette.Text); ring.LowBrush = new SolidColorBrush(palette.Low); ring.InvalidateVisual(); }
             if (pinButton != null) UpdatePin();
         }
 
@@ -215,63 +220,142 @@ namespace AgentHud
         {
             capsule = new Grid { Cursor = Cursors.SizeAll, Background = Brushes.Transparent };
             capsule.Children.Add(tint); capsule.Children.Add(sheen); capsule.Children.Add(edge); capsule.Children.Add(rim);
-            var body = new Grid();
-            // Language · pin · period · more: each button gets the strip's full height as hit area (the visible chip stays small).
-            // The trailing 6 keeps the dots about as far from the right edge as the first ring is from the left.
-            foreach (var width in new[] { 7.0, 34, 5, 52, 5, 34, 5, 52, -1, 24, 22, 40, 18, 6 })
-                body.ColumnDefinitions.Add(new ColumnDefinition { Width = width < 0 ? new GridLength(1, GridUnitType.Star) : new GridLength(width) });
+            body = new Grid();
             capsule.Children.Add(body);
-            codex.VerticalAlignment = VerticalAlignment.Center; Grid.SetColumn(codex, 1); body.Children.Add(codex);
-            Grid.SetColumn(codexLabel, 3); body.Children.Add(codexLabel);
-            claude.VerticalAlignment = VerticalAlignment.Center; Grid.SetColumn(claude, 5); body.Children.Add(claude);
-            Grid.SetColumn(claudeLabel, 7); body.Children.Add(claudeLabel);
+            codexTile = Tile(codexPet, codex, "CodexTile", out codexTip);
+            claudeTile = Tile(claudePet, claude, "ClaudeTile", out claudeTip);
 
             // Same mark as the dashboard's language button: the language it switches to, in a rounded outline.
             langText.SetResourceReference(TextBlock.ForegroundProperty, "Text");
             var langGlyph = new Border { MinWidth = 17, Height = 13, CornerRadius = new CornerRadius(3.5), BorderThickness = new Thickness(1.1), Padding = new Thickness(2, 0, 2, 0), Child = langText, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             langGlyph.SetResourceReference(Border.BorderBrushProperty, "Text");
-            langButton = IconButton(langGlyph, 24, "LanguageButton", 9);
+            langButton = IconButton(langGlyph, "LanguageButton");
             langButton.Click += delegate { ToggleLanguage(); };
 
             var pinIcon = new Grid { Width = 16, Height = 16, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
             pinIcon.Children.Add(pinShape); pinIcon.Children.Add(pinSlash);
             // One click pins, the next unpins.
-            pinButton = IconButton(pinIcon, 22, "PinButton", 10);
+            pinButton = IconButton(pinIcon, "PinButton");
             pinButton.Click += delegate { SetPinned(!saved.pinned); };
 
-            periodButton = new Button { Content = "5h", Width = 40, Height = 46, FontSize = 11, FontWeight = FontWeights.SemiBold, RenderTransform = new ScaleTransform() };
+            periodButton = new Button { Content = "5h", FontSize = 11, FontWeight = FontWeights.SemiBold, RenderTransform = new ScaleTransform() };
             periodButton.SetResourceReference(StyleProperty, "GlassChip");
+            AutomationProperties.SetAutomationId(periodButton, "PeriodButton");
             periodButton.Click += delegate { SetPeriod(saved.period == 300 ? 10080 : 300); };
             AddPressFeedback(periodButton, .94);
-            Grid.SetColumn(periodButton, 11); body.Children.Add(periodButton);
 
             // The menu lives behind ⋯ rather than on right-click, so it can be found by looking.
             var dots = new GeometryGroup();
             foreach (var x in new[] { 1.5, 6, 10.5 }) dots.Children.Add(new EllipseGeometry(new Point(x, 1.5), 1.35, 1.35));
             var dotsShape = new System.Windows.Shapes.Path { Data = dots, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             dotsShape.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "Text");
-            moreButton = IconButton(dotsShape, 18, "MoreButton", 12);
+            moreButton = IconButton(dotsShape, "MoreButton");
             moreButton.Click += delegate { OpenMenu(); };
             menu = BuildMenu();
             UpdateLanguageButton();
-            body.Children.Add(langButton); body.Children.Add(pinButton); body.Children.Add(moreButton);
+            Arrange(saved.dock == "left" || saved.dock == "right");
 
             capsule.MouseLeftButtonDown += delegate(object sender, MouseButtonEventArgs e)
             {
                 DependencyObject node = e.OriginalSource as DependencyObject;
                 while (node != null && node != capsule) { if (node is Button) return; node = VisualTreeHelper.GetParent(node); }
-                if (e.ButtonState == MouseButtonState.Pressed) { try { DragMove(); placement.EnsureVisible(true); SaveState(); } catch (InvalidOperationException) { } }
+                if (e.ButtonState == MouseButtonState.Pressed) { try { DragMove(); placement.EnsureVisible(true); SaveState(); CheckDock(); } catch (InvalidOperationException) { } }
             };
             return capsule;
         }
 
-        static Button IconButton(UIElement content, double width, string automationId, int column)
+        // Pet and ring for one platform; hovering either shows the platform's card.
+        StackPanel Tile(AgentPet pet, QuotaRing ring, string automationId, out ToolTip tip)
         {
-            var button = new Button { Content = content, Width = width, Height = 46, RenderTransform = new ScaleTransform(), RenderTransformOrigin = new Point(.5, .5) };
+            var tile = new StackPanel { Background = Brushes.Transparent };
+            tile.Children.Add(pet); tile.Children.Add(ring);
+            AutomationProperties.SetAutomationId(tile, automationId);
+            tip = new ToolTip { PlacementTarget = tile };
+            tile.ToolTip = tip;
+            ToolTipService.SetInitialShowDelay(tile, 250);
+            ToolTipService.SetBetweenShowDelay(tile, 0);
+            ToolTipService.SetShowDuration(tile, 60000);
+            tile.ToolTipOpening += delegate { RenderData(); RefreshCard(tile == codexTile, true); };
+            return tile;
+        }
+
+        // Two layouts from the same parts. The strip (docked nowhere, or to the top or bottom) reads left to right;
+        // against the left or right edge of the screen it becomes a column, pets above rings, buttons below.
+        void Arrange(bool column)
+        {
+            vertical = column;
+            body.Children.Clear(); body.RowDefinitions.Clear(); body.ColumnDefinitions.Clear();
+            var tiles = new[] { codexTile, claudeTile };
+            var buttons = new[] { langButton, pinButton, periodButton, moreButton };
+            foreach (var tile in tiles)
+            {
+                tile.Orientation = column ? Orientation.Vertical : Orientation.Horizontal;
+                tile.HorizontalAlignment = HorizontalAlignment.Center; tile.VerticalAlignment = VerticalAlignment.Center;
+            }
+            foreach (var pet in new[] { codexPet, claudePet })
+            {
+                pet.Margin = column ? new Thickness(0, 0, 0, 2) : new Thickness(0, 0, 3, 0);
+                pet.HorizontalAlignment = HorizontalAlignment.Center; pet.VerticalAlignment = VerticalAlignment.Center;
+            }
+            foreach (var ring in new[] { codex, claude }) { ring.HorizontalAlignment = HorizontalAlignment.Center; ring.VerticalAlignment = VerticalAlignment.Center; }
+            // -1 = the rest, -2 = as large as the tile.
+            var track = column ? new[] { 8.0, -2, 10, -2, -1, 28, 28, 34, 24, 6 } : new[] { 8.0, -2, 10, -2, -1, 24, 22, 40, 18, 6 };
+            foreach (var size in track)
+            {
+                var length = size == -2 ? GridLength.Auto : size < 0 ? new GridLength(1, GridUnitType.Star) : new GridLength(size);
+                if (column) body.RowDefinitions.Add(new RowDefinition { Height = length }); else body.ColumnDefinitions.Add(new ColumnDefinition { Width = length });
+            }
+            Place(codexTile, 1, column); Place(claudeTile, 3, column);
+            for (var i = 0; i < buttons.Length; i++)
+            {
+                // Each button keeps the whole strip's height (or the column's width) as hit area; the visible chip stays small.
+                buttons[i].Width = column ? (buttons[i] == periodButton ? 44 : 36) : track[5 + i];
+                buttons[i].Height = column ? track[5 + i] : 50;
+                Place(buttons[i], 5 + i, column);
+            }
+            Width = column ? 58 : 282; Height = column ? 290 : 52;
+            PlaceTips();
+        }
+        void Place(UIElement element, int index, bool column)
+        {
+            Grid.SetRow(element, column ? index : 0); Grid.SetColumn(element, column ? 0 : index);
+            body.Children.Add(element);
+        }
+        // Cards open beside the column (toward the screen) and under the strip.
+        void PlaceTips()
+        {
+            foreach (var tip in new[] { codexTip, claudeTip })
+            {
+                tip.Placement = !vertical ? PlacementMode.Bottom : saved.dock == "right" ? PlacementMode.Left : PlacementMode.Right;
+                tip.HorizontalOffset = !vertical ? 0 : saved.dock == "right" ? 8 : -8;
+                tip.VerticalOffset = !vertical ? -6 : -14;
+            }
+        }
+        // After a move settles: against the left or right edge → column; anywhere else → strip.
+        void CheckDock()
+        {
+            if (placement == null || exiting) return;
+            var edge = placement.SideEdge();
+            var column = edge != null;
+            if (column == vertical && edge == saved.dock) return;
+            saved.dock = edge;
+            if (column != vertical)
+            {
+                Rect before;
+                var known = placement.TryGetRect(out before);
+                Arrange(column);
+                if (known) placement.Reanchor(before, edge);
+            }
+            else PlaceTips();
+            SaveState();
+        }
+
+        static Button IconButton(UIElement content, string automationId)
+        {
+            var button = new Button { Content = content, RenderTransform = new ScaleTransform(), RenderTransformOrigin = new Point(.5, .5) };
             button.SetResourceReference(StyleProperty, "IconChip");
             AutomationProperties.SetAutomationId(button, automationId);
             AddPressFeedback(button, .9);
-            Grid.SetColumn(button, column);
             return button;
         }
         // Feedback on pointer-down, not release.
@@ -307,12 +391,25 @@ namespace AgentHud
         }
         // Drops below the strip, right-aligned with it. The menu template keeps a 14 DIP transparent
         // margin for its shadow, so the offsets cancel it; WPF flips the menu above near the screen bottom.
+        // In the column it opens beside ⋯, toward the screen, bottoms aligned.
         void OpenMenu()
         {
-            menu.PlacementTarget = capsule; menu.Placement = PlacementMode.Bottom;
             menu.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            menu.HorizontalOffset = capsule.ActualWidth - menu.DesiredSize.Width + 14;
-            menu.VerticalOffset = -14 + 6;
+            if (!vertical)
+            {
+                menu.PlacementTarget = capsule; menu.Placement = PlacementMode.Bottom;
+                menu.HorizontalOffset = capsule.ActualWidth - menu.DesiredSize.Width + 14;
+                menu.VerticalOffset = -14 + 6;
+            }
+            else
+            {
+                // Beside the column's edge (not the narrower button), its bottom level with the ⋯ button's.
+                var buttonBottom = moreButton.TranslatePoint(new Point(0, moreButton.ActualHeight), capsule).Y;
+                menu.PlacementTarget = capsule;
+                menu.Placement = saved.dock == "right" ? PlacementMode.Left : PlacementMode.Right;
+                menu.HorizontalOffset = saved.dock == "right" ? 14 - 8 : -14 + 8;
+                menu.VerticalOffset = buttonBottom - menu.DesiredSize.Height + 14;
+            }
             menu.IsOpen = true;
         }
         // Written in the language it switches to, so it can be found by someone who can't read the current one.
@@ -334,12 +431,13 @@ namespace AgentHud
             menu = BuildMenu();
             UpdateLanguageButton();
             var oldTray = tray.ContextMenuStrip;
-            tray.Text = Lang.T("Agent HUD · 额度小组件", "Agent HUD · quota widget");
+            tray.Text = Lang.T("Agent Meter · 额度小组件", "Agent Meter · quota widget");
             tray.ContextMenuStrip = BuildTrayMenu();
             if (oldTray != null) oldTray.Dispose();
             UpdatePin();
-            codexLabel.Invalidate(); claudeLabel.Invalidate();
+            codexPet.Relabel(); claudePet.Relabel();
             SetPeriod(saved.period);
+            RefreshCard(true, false); RefreshCard(false, false);
         }
         void SetPeriod(int period)
         {
@@ -403,24 +501,38 @@ namespace AgentHud
         void RenderData()
         {
             if (!IsVisible || exiting) return;
-            var providers = snapshot == null ? null : snapshot.providers;
             var now = RingValue.Now();
-            var c = RingValue.From(providers == null ? null : providers.FirstOrDefault(p => p.id == "codex"), saved.period, now, online);
-            var a = RingValue.From(providers == null ? null : providers.FirstOrDefault(p => p.id == "claude"), saved.period, now, online);
-            codex.Update(c); claude.Update(a); codexLabel.Show(c, !online); claudeLabel.Show(a, !online);
+            var cp = ProviderFor("codex"); var ap = ProviderFor("claude");
+            var c = RingValue.From(cp, saved.period, now, online);
+            var a = RingValue.From(ap, saved.period, now, online);
+            codex.Update(c, !online); claude.Update(a, !online);
+            codexPet.SetMood(AgentPet.MoodFor(cp, c, online, now)); claudePet.SetMood(AgentPet.MoodFor(ap, a, online, now));
+            RefreshCard(true, false); RefreshCard(false, false);
             var scanStale = snapshot != null && (!snapshot.collectedAt.HasValue || now - snapshot.collectedAt.Value > 30000);
             // Offline: orange edge *and* the word "离线" under each ring — colour is never the only signal.
             // A slow session scan doesn't touch the quotas shown here, so it only goes in the tooltip.
             var wasDegraded = degraded;
             degraded = !online;
             if (degraded != wasDegraded) rim.BorderBrush = degraded ? palette.RimOffline : palette.Rim;
-            var detail = Lang.T("拖动可移动 · 靠近屏幕边缘自动贴边 · ⋯ 打开菜单\n", "Drag to move · snaps to screen edges · ⋯ opens the menu\n")
+            var detail = Lang.T("拖动可移动 · 拖到屏幕左右边缘变为竖排 · ⋯ 打开菜单\n", "Drag to move · drop against the left or right edge for a column · ⋯ opens the menu\n")
                 + (!online ? Lang.T("本地服务离线，正在自动重启；显示的是最后一次快照", "Local service offline, restarting automatically; showing the last snapshot")
                     : snapshot.loading ? Lang.T("正在读取额度", "Reading quotas")
                     : scanStale ? Lang.T("会话扫描延迟，额度不受影响", "Session scan delayed; quotas are unaffected")
                     : Lang.T("每 5 秒读取本地快照；平台额度按各自频率更新", "Reads the local snapshot every 5 s; each platform's quota updates on its own schedule"))
-                + Lang.T("\n悬停圆环查看额度更新时间和重置倒计时", "\nHover a ring for its update time and reset countdown");
+                + Lang.T("\n悬停宠物或圆环查看该 agent 的详情", "\nHover a pet or ring for that agent's details");
             if (!Equals(capsule.ToolTip, detail)) capsule.ToolTip = detail;
+        }
+        Provider ProviderFor(string id)
+        {
+            return snapshot == null || snapshot.providers == null ? null : snapshot.providers.FirstOrDefault(p => p.id == id);
+        }
+        // Rebuilt when it opens and while it stays open, so it follows the 5-second refresh.
+        void RefreshCard(bool forCodex, bool opening)
+        {
+            var tip = forCodex ? codexTip : claudeTip;
+            if (tip == null || (!opening && !tip.IsOpen)) return;
+            var pet = forCodex ? codexPet : claudePet;
+            tip.Content = AgentDetail.Build(ProviderFor(forCodex ? "codex" : "claude"), forCodex, saved.period, RingValue.Now(), online, pet.Mood);
         }
         void OpenDashboard() { try { Process.Start(new ProcessStartInfo(server.AbsoluteUri) { UseShellExecute = true }); } catch { } }
         void OpenClaudeUsage() { try { Process.Start(new ProcessStartInfo("https://claude.ai/settings/usage") { UseShellExecute = true }); } catch { } }
@@ -444,7 +556,7 @@ namespace AgentHud
 
         void SetupTray()
         {
-            tray = new Forms.NotifyIcon { Text = Lang.T("Agent HUD · 额度小组件", "Agent HUD · quota widget"), Icon = CreateIcon(), Visible = true };
+            tray = new Forms.NotifyIcon { Text = Lang.T("Agent Meter · 额度小组件", "Agent Meter · quota widget"), Icon = CreateIcon(), Visible = true };
             tray.ContextMenuStrip = BuildTrayMenu();
             tray.MouseClick += delegate(object sender, Forms.MouseEventArgs e) { if (e.Button == Forms.MouseButtons.Left) Dispatcher.Invoke(new Action(ShowWidget)); };
             var iconPath = Path.Combine(dataDir, "widget.ico");
@@ -506,63 +618,6 @@ namespace AgentHud
             if (Double.IsNaN(left) || Double.IsInfinity(left) || Double.IsNaN(top) || Double.IsInfinity(top)) return;
             // Migrate the legacy DIP coordinates; WindowPlacement validates against real monitor work areas after HWND creation.
             Left = left; Top = top;
-        }
-    }
-
-    // The percentage (or a short status) above the platform name, beside each ring.
-    // Text on glass stays in the primary colour (grey on glass measures as low as 2.3 : 1);
-    // hierarchy comes from size and weight, and an uncertain value drops to regular weight.
-    public sealed class QuotaLabel : StackPanel
-    {
-        readonly string platform;
-        readonly TextBlock value = new TextBlock { FontSize = 13.5, FontFamily = new FontFamily("Segoe UI Variable Display, Segoe UI, Microsoft YaHei UI") };
-        readonly TextBlock name = new TextBlock { FontSize = 9.5, Margin = new Thickness(0, -2, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis };
-        double? lastPercent;
-        string lastCaption, lastBadge;
-        bool initialized, lastStale, lastOffline;
-
-        public QuotaLabel(string platform)
-        {
-            this.platform = platform;
-            VerticalAlignment = VerticalAlignment.Center;
-            name.SetResourceReference(TextBlock.ForegroundProperty, "Text");
-            Children.Add(value); Children.Add(name);
-            Show(new RingValue(), false);
-        }
-
-        // After a language switch: the next Show redraws even if the values didn't change.
-        public void Invalidate() { initialized = false; }
-
-        public void Show(RingValue ring, bool offline)
-        {
-            if (!Equals(ToolTip, ring.Detail)) ToolTip = ring.Detail;
-            var badge = ring.ResetsAt.HasValue ? RingValue.ResetBadge(ring.ResetsAt.Value, RingValue.Now()) : null;
-            if (initialized && lastPercent == ring.Percent && lastCaption == ring.Caption && lastStale == ring.Stale && lastOffline == offline && lastBadge == badge) return;
-            initialized = true; lastPercent = ring.Percent; lastCaption = ring.Caption; lastStale = ring.Stale; lastOffline = offline; lastBadge = badge;
-            if (ring.Percent.HasValue)
-            {
-                value.Text = Math.Round(ring.Percent.Value).ToString(CultureInfo.InvariantCulture) + "%";
-                value.FontWeight = ring.Stale ? FontWeights.Normal : FontWeights.SemiBold;
-                // Red only for a nearly used-up quota, always next to the number itself.
-                value.SetResourceReference(TextBlock.ForegroundProperty, ring.Percent.Value < 20 ? "Low" : "Text");
-                // The logo in the ring names the platform, so this line carries when the quota resets.
-                // Offline keeps its word; without a reset time it falls back to the platform name.
-                // English drops the platform name where "Claude offline" / "Claude snapshot" would not fit 52 DIP.
-                name.Text = offline ? Lang.T(platform + " 离线", "Offline")
-                    : badge ?? (ring.Stale ? Lang.T(platform + " 快照", "Snapshot") : Lang.T(platform + " 剩余", platform + " left"));
-            }
-            else
-            {
-                value.Text = offline ? Lang.T("离线", "Offline")
-                    : ring.Status == RingStatus.Setup ? Lang.T("待连接", "Setup")
-                    : ring.Status == RingStatus.NotLinked ? Lang.T("未接入", "No link")
-                    : ring.Status == RingStatus.Expired ? Lang.T("待更新", "Pending")
-                    : ring.Status == RingStatus.Waiting ? Lang.T("等待", "Waiting")
-                    : Lang.T("未提供", "N/A");
-                value.FontWeight = FontWeights.Normal;
-                value.SetResourceReference(TextBlock.ForegroundProperty, "Text");
-                name.Text = platform;
-            }
         }
     }
 }

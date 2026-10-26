@@ -50,10 +50,23 @@ namespace AgentHud
             { "尚未接入 Claude Code CLI 状态栏。", "The Claude Code CLI status line isn't connected yet." },
         };
 
+        static readonly Dictionary<string, string> WindowWords = new Dictionary<string, string>
+        {
+            { "短周期", "Short window" }, { "长周期", "Long window" }, { "支出额度", "Spend limit" },
+        };
+        static readonly System.Text.RegularExpressions.Regex Span = new System.Text.RegularExpressions.Regex(@"^(.*?)(\d+) (分钟|小时|天)$");
+
         public static string Server(string text)
         {
             string english;
-            return English && text != null && ServerText.TryGetValue(text, out english) ? english : text;
+            if (!English || text == null) return text;
+            if (ServerText.TryGetValue(text, out english) || WindowWords.TryGetValue(text, out english)) return english;
+            // Quota window names such as "5 小时", "7 天" or "Opus · 7 天".
+            var span = Span.Match(text);
+            if (!span.Success) return text;
+            var n = int.Parse(span.Groups[2].Value, CultureInfo.InvariantCulture);
+            var unit = span.Groups[3].Value == "分钟" ? "min" : span.Groups[3].Value == "小时" ? (n == 1 ? "hour" : "hours") : (n == 1 ? "day" : "days");
+            return span.Groups[1].Value + n + " " + unit;
         }
     }
 }
