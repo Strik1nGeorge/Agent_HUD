@@ -48,7 +48,7 @@ namespace AgentHud
             if (windows != null && windows.Count > 0)
             {
                 var shown = RingValue.PickWindow(limits.windows, period);
-                foreach (var window in windows) card.Children.Add(WindowRow(window, window == shown && windows.Count > 1, codex, now));
+                foreach (var window in windows) card.Children.Add(WindowRow(window, window == shown && windows.Count > 1, codex, now, RingValue.WeeklyBlocker(limits, window, now)));
             }
             else
             {
@@ -89,12 +89,13 @@ namespace AgentHud
             return text;
         }
 
-        static UIElement WindowRow(QuotaWindow window, bool current, bool codex, double now)
+        static UIElement WindowRow(QuotaWindow window, bool current, bool codex, double now, QuotaWindow weekly)
         {
             var row = new StackPanel { Margin = new Thickness(0, 0, 0, 7) };
             var top = new DockPanel { LastChildFill = true };
-            var percent = Math.Max(0, Math.Min(100, window.remainingPercent.Value));
-            var expired = window.resetsAt.HasValue && window.resetsAt.Value <= now;
+            var percent = weekly == null ? Math.Max(0, Math.Min(100, window.remainingPercent.Value)) : 0;
+            var resetsAt = RingValue.EffectiveReset(window, weekly, now);
+            var expired = weekly == null && window.resetsAt.HasValue && window.resetsAt.Value <= now;
             var value = Text(expired ? "—" : Math.Round(percent).ToString(CultureInfo.InvariantCulture) + "%", 12.5, FontWeights.SemiBold, false);
             if (!expired && percent < 20) value.SetResourceReference(TextBlock.ForegroundProperty, "Low");
             DockPanel.SetDock(value, Dock.Right);
@@ -114,9 +115,10 @@ namespace AgentHud
             row.Children.Add(bar);
 
             var reset = expired ? Lang.T("已过重置时间，等待更新", "Reset time passed; waiting for an update")
-                : window.resetsAt.HasValue ? RingValue.ResetText(window.resetsAt.Value - now) + Lang.T("（" + RingValue.Stamp(window.resetsAt.Value) + "）", " (" + RingValue.Stamp(window.resetsAt.Value) + ")")
+                : resetsAt.HasValue ? RingValue.ResetText(resetsAt.Value - now) + Lang.T("（" + RingValue.Stamp(resetsAt.Value) + "）", " (" + RingValue.Stamp(resetsAt.Value) + ")")
                 : Lang.T("重置时间未提供", "Reset time not provided");
             row.Children.Add(Text(reset, 10.5, FontWeights.Normal, true));
+            if (weekly != null) row.Children.Add(Text(RingValue.WeeklyBlockedText(window), 10.5, FontWeights.Normal, true));
             return row;
         }
 

@@ -1,4 +1,5 @@
 import { t, lang, setLang, server, rangeLabel, locale, applyStatic } from '/i18n.js';
+import { quotaDisplay } from '/quota-display.js';
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -45,8 +46,10 @@ function renderProviders() {
     const plan = limits?.plan ? `<span class="plan">${escapeHtml(limits.plan)}</span>` : '';
     const label = windows.length ? (recent ? t('state.synced') : t('state.snapshot')) : (p.connected ? t('state.connected') : t('state.waiting'));
     const body = windows.length ? `<div class="quota-windows">${windows.map(win => {
-      const expired = win.resetsAt && win.resetsAt <= Date.now();
-      return `<div class="quota-window"><div class="quota-label"><span>${escapeHtml(server(win.name))}</span><small>${expired ? t('quota.updating') : t('quota.left')}</small></div><div class="quota-number">${expired ? '—' : Number(win.remainingPercent.toFixed(1))}${expired ? '' : '<small>%</small>'}</div><div class="quota-bar ${win.remainingPercent < 20 ? 'low' : ''}"><span style="width:${expired ? 0 : win.remainingPercent}%"></span></div><div class="quota-reset" title="${escapeHtml(fullTime(win.resetsAt))}">${countdown(win.resetsAt)}</div></div>`;
+      const shown = quotaDisplay(win, windows);
+      const unavailable = shown.expired || shown.remainingPercent == null;
+      const reported = Number.isFinite(win.remainingPercent) ? t('quota.reportedLeft', { n: Number(win.remainingPercent.toFixed(1)) }) : '';
+      return `<div class="quota-window"><div class="quota-label"><span>${escapeHtml(server(win.name))}</span><small>${shown.expired ? t('quota.updating') : t('quota.left')}</small></div><div class="quota-number">${unavailable ? '—' : Number(shown.remainingPercent.toFixed(1))}${unavailable ? '' : '<small>%</small>'}</div><div class="quota-bar ${shown.remainingPercent < 20 ? 'low' : ''}"><span style="width:${unavailable ? 0 : shown.remainingPercent}%"></span></div><div class="quota-reset" title="${escapeHtml(fullTime(shown.resetsAt))}">${countdown(shown.resetsAt)}</div>${shown.weeklyBlocked ? `<div class="quota-reason" title="${escapeHtml(reported)}">${t('quota.weeklyBlocked')}</div>` : ''}</div>`;
     }).join('')}</div>` : `<div class="unavailable"><strong>${t('quota.unavailable')}</strong><p>${escapeHtml(id === 'claude' ? server(p.quotaMessage) || t('quota.claudeMissing') : t('quota.codexMissing'))}</p>${id === 'claude' ? `<div class="button-row"><a class="connect-button" href="https://claude.ai/settings/usage" target="_blank" rel="noreferrer">${t('quota.claudeUsage')}</a><button class="connect-button secondary" data-setup>${t('quota.setupGuide')}</button></div>` : ''}</div>`;
     return `<article class="provider-card ${id}"><div class="provider-top"><span class="provider-logo ${id}" aria-hidden="true">${LOGOS[id]}</span><span class="provider-name">${p.name}</span>${plan}<span class="provider-state"><i class="${recent ? 'live' : ''}"></i>${label}</span></div>${body}<div class="provider-foot"><span title="${escapeHtml(server(p.quotaError) || '')}">${limits ? `${escapeHtml(server(limits.source))} · ${ago(limits.collectedAt)}` : t('quota.separate')}</span><div class="foot-links"><a class="source-link" href="${USAGE_PAGES[id]}" target="_blank" rel="noreferrer">${t('quota.usagePage')}</a><button class="source-link" data-connections>${t('quota.sources')}</button></div></div></article>`;
   }).join('');

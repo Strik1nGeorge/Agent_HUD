@@ -44,6 +44,7 @@ namespace AgentHud
     }
     public class QuotaWindow
     {
+        public string id { get; set; }
         public string name { get; set; }
         public double? remainingPercent { get; set; }
         public double? windowMinutes { get; set; }
@@ -97,7 +98,8 @@ namespace AgentHud
                 result.Detail += provider.id == "claude" ? Lang.T("\n点 ⋯ → Claude 官方用量，查看当前账户额度。", "\n⋯ → Claude usage shows this account's quota.") : Lang.T("\n点 ⋯ → Codex 官方用量，查看当前账户额度。", "\n⋯ → Codex usage shows this account's quota.");
                 return result;
             }
-            if (win.resetsAt.HasValue && win.resetsAt.Value <= now)
+            var weekly = WeeklyBlocker(limits, win, now);
+            if (weekly == null && win.resetsAt.HasValue && win.resetsAt.Value <= now)
             {
                 result.Status = RingStatus.Expired;
                 result.Caption = Lang.T("等待额度重置", "Waiting for reset");
@@ -105,22 +107,51 @@ namespace AgentHud
                 return result;
             }
             result.Status = RingStatus.Live;
-            result.Percent = Math.Max(0, Math.Min(100, win.remainingPercent.Value));
-            result.ResetsAt = win.resetsAt;
+            result.Percent = weekly == null ? Math.Max(0, Math.Min(100, win.remainingPercent.Value)) : 0;
+            result.ResetsAt = EffectiveReset(win, weekly, now);
             result.Stale = limits.stale || !online || !limits.collectedAt.HasValue || now - limits.collectedAt.Value > (limits.staleAfterMs ?? 120000);
-            result.Caption = win.resetsAt.HasValue ? ResetText(win.resetsAt.Value - now) : Lang.T("重置时间未提供", "Reset time not provided");
-            var resetDate = win.resetsAt.HasValue ? LocalTime(win.resetsAt.Value) : null;
+            result.Caption = result.ResetsAt.HasValue ? ResetText(result.ResetsAt.Value - now) : Lang.T("重置时间未提供", "Reset time not provided");
+            var resetDate = result.ResetsAt.HasValue ? LocalTime(result.ResetsAt.Value) : null;
             var resetStamp = resetDate.HasValue ? Lang.T("（" + resetDate.Value.ToString("MM-dd HH:mm") + "）", " (" + resetDate.Value.ToString("MM-dd HH:mm") + ")") : "";
             result.Detail = (Lang.Server(limits.source) ?? Lang.T("平台额度", "Platform quota")) + "\n" + UpdatedText(limits.collectedAt, now) + "\n" + (result.Stale ? Lang.T("历史快照 · ", "Snapshot · ") : "") + result.Caption + resetStamp;
             if (limits.source == "Codex 官方额度接口") result.Detail += Lang.T("\n正常约每 1 分钟查询，连接失败时可能延迟。", "\nNormally queried about once a minute; may lag when the connection fails.");
             else if (limits.source == "Claude 桌面账户额度") result.Detail += Lang.T("\n正常约每 5 分钟查询，连接失败时可能延迟。", "\nNormally queried about every 5 minutes; may lag when the connection fails.");
             result.Detail += Lang.T("\n同一平台账户内共享，非单个 agent 的独立额度。", "\nShared across the platform account, not a per-agent quota.");
+            if (weekly != null) result.Detail += "\n" + WeeklyBlockedText(win);
             if (win.windowMinutes != period)
                 result.Detail += Lang.T("\n此账户没有" + PeriodName(period, false) + "额度，这里显示的是" + PeriodName(win.windowMinutes ?? 0, false) + "额度。",
                     "\nThis account has no " + PeriodName(period, true) + " quota; showing its " + PeriodName(win.windowMinutes ?? 0, true) + " quota instead.");
             if (!String.IsNullOrEmpty(provider.quotaMessage)) result.Detail += "\n" + Lang.Server(provider.quotaMessage);
             if (result.Stale) result.Caption = Lang.T("快照 · ", "Snapshot · ") + result.Caption;
             return result;
+        }
+        // Only the account-wide weekly window blocks its 5-hour allowance. Model-specific
+        // windows (for example Opus) and snapshots past their reset cannot block the account.
+        public static QuotaWindow WeeklyBlocker(Limits limits, QuotaWindow window, double now)
+        {
+            if (window == null || window.windowMinutes != 300 || limits == null || limits.windows == null) return null;
+            return limits.windows.FirstOrDefault(w => w != null && w.windowMinutes == 10080
+                && (String.IsNullOrEmpty(w.id) || w.id == "seven_day")
+                && (String.IsNullOrEmpty(w.name) || !w.name.Contains("·"))
+                && w.remainingPercent.HasValue && !Double.IsInfinity(w.remainingPercent.Value) && w.remainingPercent.Value <= 0
+                && (!w.resetsAt.HasValue || w.resetsAt.Value > now));
+        }
+        public static double? EffectiveReset(QuotaWindow window, QuotaWindow weekly, double now)
+        {
+            if (weekly == null) return window.resetsAt;
+            if (window.remainingPercent <= 0 && (!window.resetsAt.HasValue || window.resetsAt > now))
+                return window.resetsAt.HasValue && weekly.resetsAt.HasValue ? Math.Max(window.resetsAt.Value, weekly.resetsAt.Value) : (double?)null;
+            return weekly.resetsAt;
+        }
+        public static string WeeklyBlockedText(QuotaWindow window)
+        {
+            var note = Lang.T("周额度已用尽，5 小时可用额度为 0%。", "Weekly quota exhausted; available 5-hour quota is 0%.");
+            if (window.remainingPercent.HasValue)
+            {
+                var raw = Math.Max(0, Math.Min(100, window.remainingPercent.Value)).ToString("0.#", CultureInfo.InvariantCulture);
+                note += Lang.T("平台 5 小时原始剩余：" + raw + "%（未计入周限制）。", " Platform-reported 5-hour remaining: " + raw + "% (before the weekly limit).");
+            }
+            return note;
         }
         // Plans differ: the free plan reports one 30-day window instead of 5 h / 7 d. The selected window wins;
         // without it the ring shows the account's nearest window rather than nothing, and the tooltip says so.

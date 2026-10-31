@@ -79,6 +79,7 @@ namespace AgentHud.Tests
             Check(freeRing.Percent == 100 && RingValue.From(free, 10080, now, true).Percent == 100 && freeRing.Detail.Contains("此账户没有 5 小时额度，这里显示的是 30 天额度"), "an account with only a 30-day window shows it under 5h and 7d and says so");
             Check(RingValue.RingBadge(stamp(new DateTime(2026, 11, 24, 14, 2, 0, DateTimeKind.Local)), monday) == "11/24", "a reset weeks away shows its date instead of a weekday");
             Check(!RingValue.From(ProviderAt(now), 300, now, true).Detail.Contains("此账户没有"), "an account with the selected window shows no fallback note");
+            CheckWeeklyLimit(now);
 
             // Pets: an empty window beats work, work beats a low quota, and offline beats everything.
             var busy = ProviderAt(now); busy.activity = new Activity { working = true, activeSessions = 2, todayTokens = 1234567, todayRequests = 42, model = "gpt-6.1-sol", effort = "xhigh", lastActiveAt = now - 30000 };
@@ -162,6 +163,40 @@ namespace AgentHud.Tests
                 Check(counted.Renders > count, "stale state still redraws the counted");
             }
             finally { host.Close(); }
+        }
+        static void CheckWeeklyLimit(double now)
+        {
+            var provider = ProviderAt(now);
+            var shortWindow = provider.limits.windows[0];
+            var week = provider.limits.windows[1];
+            week.remainingPercent = 0;
+            var shown = RingValue.From(provider, 300, now, true);
+            Check(shown.Percent == 0 && shown.ResetsAt == week.resetsAt && shortWindow.remainingPercent == 80, "an exhausted week makes the 5-hour ring zero without changing platform data");
+            Check(shown.Detail.Contains("周额度已用尽") && shown.Detail.Contains("原始剩余：80%"), "the weekly limit explains why available and reported 5-hour quota differ");
+            var text = String.Join("\n", Texts(AgentDetail.Build(provider, true, 300, now, true, PetMood.Exhausted)));
+            Check(text.Contains("0%") && text.Contains("周额度已用尽") && text.Contains("原始剩余：80%"), "the hover card shows zero availability and retains the reported percentage");
+            provider.id = "claude";
+            Check(RingValue.From(provider, 300, now, true).Percent == 0 && RingValue.From(provider, 10080, now, true).Percent == 0, "the weekly rule applies to Claude and keeps the weekly view at zero");
+            Check(RingValue.From(provider, 300, now, false).Percent == 0 && RingValue.From(provider, 300, now, false).Stale, "offline snapshots keep the weekly restriction and their stale label");
+            week.remainingPercent = .1;
+            Check(RingValue.From(provider, 300, now, true).Percent == 80, "a small positive weekly balance is not treated as exhausted");
+            week.remainingPercent = null;
+            Check(RingValue.From(provider, 300, now, true).Percent == 80, "an unknown weekly balance does not zero the 5-hour quota");
+            week.remainingPercent = 0; week.resetsAt = now - 1;
+            Check(RingValue.From(provider, 300, now, true).Percent == 80, "a weekly reset that already passed cannot keep blocking the 5-hour quota");
+            week.resetsAt = now + 86400000; week.id = "seven_day_opus"; week.name = "Opus · 7 天";
+            Check(RingValue.From(provider, 300, now, true).Percent == 80, "a model-specific weekly limit cannot zero the entire account");
+            week.id = null;
+            Check(RingValue.From(provider, 300, now, true).Percent == 80, "a named model-specific weekly snapshot remains scoped without an id");
+            week.id = "seven_day"; week.name = "7 天"; shortWindow.resetsAt = now - 1;
+            Check(RingValue.From(provider, 300, now, true).Percent == 0, "a known active weekly block still shows zero when the 5-hour snapshot expired");
+            shortWindow.remainingPercent = 0; shortWindow.resetsAt = now + 2 * 86400000;
+            Check(RingValue.From(provider, 300, now, true).ResetsAt == shortWindow.resetsAt, "when both windows are exhausted the later reset controls availability");
+            week.resetsAt = null;
+            Check(!RingValue.From(provider, 300, now, true).ResetsAt.HasValue, "an unknown weekly reset does not promise availability at the 5-hour reset");
+            Lang.Apply("en");
+            try { Check(RingValue.From(provider, 300, now, true).Detail.Contains("Weekly quota exhausted"), "the weekly restriction explanation is translated into English"); }
+            finally { Lang.Apply("zh"); }
         }
         // The work area of the monitor a window is on, in physical pixels.
         public static Rect WorkAreaOf(Window window)

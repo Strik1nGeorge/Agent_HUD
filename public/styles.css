@@ -239,6 +239,7 @@ h1 { margin: 15px 0 0; font-size: clamp(32px, 6vw, 52px); font-weight: 700; lett
 /* Nearly used up: system red (orange is Claude's own colour) */
 .quota-bar.low span, .claude .quota-bar.low span { background: var(--danger); }
 .quota-reset { min-height: 20px; margin-top: 10px; overflow: hidden; color: var(--text-3); font-size: 12.5px; white-space: nowrap; text-overflow: ellipsis; }
+.quota-reason { margin-top: 5px; color: var(--text-3); font-size: 12px; line-height: 1.5; }
 .provider-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: auto; padding-top: 14px; border-top: 1px solid var(--hairline); color: var(--text-3); font-size: 12.5px; }
 .quota-windows + .provider-foot, .unavailable + .provider-foot { margin-top: 22px; }
 .provider-foot span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

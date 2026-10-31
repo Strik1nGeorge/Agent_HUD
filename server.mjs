@@ -22,7 +22,7 @@ const quota = new CodexQuota();
 const claudeDesktopEnabled = await fs.readFile(path.join(dataDir, 'claude-desktop-connection.json'), 'utf8').then(s => JSON.parse(s).enabled === true).catch(() => false);
 const claudeQuota = new ClaudeDesktopQuota();
 const port = Number(process.env.PORT || 4318);
-const assets = { '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/i18n.js': ['i18n.js', 'text/javascript; charset=utf-8'],'/styles.css': ['styles.css', 'text/css; charset=utf-8'], '/icon.svg': ['icon.svg','image/svg+xml'] };
+const assets = { '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/i18n.js': ['i18n.js', 'text/javascript; charset=utf-8'], '/quota-display.js': ['quota-display.js', 'text/javascript; charset=utf-8'], '/styles.css': ['styles.css', 'text/css; charset=utf-8'], '/icon.svg': ['icon.svg','image/svg+xml'] };
 
 function snapshot() {
   const data = structuredClone(collector.value);
