@@ -17,6 +17,7 @@ namespace AgentHud.Tests
         [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
         [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr hwnd, uint command);
+        [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam);
 
         static bool NativePinned(Window window) { return (GetWindowLong(new WindowInteropHelper(window).Handle, -20) & 8) != 0; }
         static void Pump()
@@ -121,7 +122,7 @@ namespace AgentHud.Tests
                     var work = BehaviorTests.WorkAreaOf(hud);
                     Rect before; place.TryGetRect(out before);
                     SetWindowPos(handle, IntPtr.Zero, (int)work.Left, (int)before.Top, 0, 0, 0x0215); Pump();
-                    checkDock.Invoke(hud, null); Pump(); Pump();
+                    checkDock.Invoke(hud, null); Pump(); Pump(); DockAnimationTests.Wait(place);
                     Rect docked; place.TryGetRect(out docked);
                     Console.WriteLine("Docked rect " + docked + " in work area " + work + "; size " + hud.Width + "x" + hud.Height + ", edge " + place.SideEdge());
                     // Sizes snap to whole physical pixels, so compare within a pixel.
@@ -132,8 +133,38 @@ namespace AgentHud.Tests
                     Check(sideMenu.IsOpen && menuLeft > docked.Right && menuLeft - docked.Right < 20, "in the column the menu opens beside it, toward the screen");
                     sideMenu.IsOpen = false; Pump();
                     SetWindowPos(handle, IntPtr.Zero, (int)work.Left + 300, (int)docked.Top, 0, 0, 0x0215); Pump();
-                    checkDock.Invoke(hud, null); Pump(); Pump();
+                    checkDock.Invoke(hud, null); Pump(); Pump(); DockAnimationTests.Wait(place);
                     Check(Math.Abs(hud.Width - 282) < 1 && Math.Abs(hud.Height - 52) < 1 && place.SideEdge() == null, "moved off the edge, it turns back into a strip");
+                    // A drag's native settled notification can run before the deferred reanchor.
+                    // Rechecking in that interval must not undo a right-edge layout change.
+                    place.TryGetRect(out before);
+                    SetWindowPos(handle, IntPtr.Zero, (int)Math.Round(work.Right - before.Width), (int)before.Top, 0, 0, 0x0215); Pump();
+                    SendMessage(handle, 0x0232, IntPtr.Zero, IntPtr.Zero); // WM_EXITSIZEMOVE queues the native settled check.
+                    checkDock.Invoke(hud, null);
+                    checkDock.Invoke(hud, null);
+                    Pump(); Pump(); DockAnimationTests.Wait(place);
+                    place.TryGetRect(out docked);
+                    Console.WriteLine("Right docked rect " + docked + "; size " + hud.Width + "x" + hud.Height + ", edge " + place.SideEdge());
+                    Check(Math.Abs(hud.Width - 58) < 1 && Math.Abs(hud.Height - 290) < 1 && place.SideEdge() == "right" && Math.Abs(docked.Right - work.Right) <= 1 && work.Contains(docked), "repeated settled checks keep the column docked to the right edge");
+                    Click(hud, "MoreButton");
+                    sideMenu = Menu(hud);
+                    var menuRight = sideMenu.PointToScreen(new Point(sideMenu.ActualWidth - 14, 14)).X;
+                    Check(sideMenu.IsOpen && menuRight < docked.Left && docked.Left - menuRight < 20, "the right-edge column opens its menu inward to the left");
+                    sideMenu.IsOpen = false; Pump();
+                    var rightTip = (ToolTip)typeof(HudWindow).GetField("codexTip", flags).GetValue(hud);
+                    Check(rightTip.Placement == System.Windows.Controls.Primitives.PlacementMode.Left, "right-edge hover cards open toward the screen");
+                    SetWindowPos(handle, IntPtr.Zero, (int)Math.Round(work.Right - docked.Width - 60), (int)docked.Top, 0, 0, 0x0215); Pump();
+                    SendMessage(handle, 0x0232, IntPtr.Zero, IntPtr.Zero);
+                    checkDock.Invoke(hud, null); checkDock.Invoke(hud, null); Pump(); Pump(); DockAnimationTests.Wait(place);
+                    place.TryGetRect(out before);
+                    Console.WriteLine("Undocked right rect " + before + "; size " + hud.Width + "x" + hud.Height + ", edge " + place.SideEdge());
+                    Check(Math.Abs(hud.Width - 282) < 1 && place.SideEdge() == null && Math.Abs(before.Right - (work.Right - 60)) <= 1 && work.Contains(before), "undocking from the right restores a strip without jumping across the screen");
+                    SetWindowPos(handle, IntPtr.Zero, (int)Math.Round(work.Right - before.Width), (int)Math.Round(work.Bottom - before.Height), 0, 0, 0x0215); Pump();
+                    SendMessage(handle, 0x0232, IntPtr.Zero, IntPtr.Zero);
+                    checkDock.Invoke(hud, null); checkDock.Invoke(hud, null); Pump(); Pump(); DockAnimationTests.Wait(place);
+                    place.TryGetRect(out docked);
+                    Check(place.SideEdge() == "right" && Math.Abs(hud.Width - 58) < 1 && work.Contains(docked), "docking near the bottom-right corner keeps the column above the taskbar");
+                    DockAnimationTests.Run(hud);
                     var foreground = GetForegroundWindow();
                     // Reproduce a native z-order change without changing WPF's cached Topmost value.
                     Check(SetWindowPos(handle, new IntPtr(-2), 0, 0, 0, 0, 0x213), "native demotion succeeded");
@@ -154,6 +185,8 @@ namespace AgentHud.Tests
                     hud = new HudWindow(directory, new Uri("http://127.0.0.1:1"), signal, false, exitSignal);
                     hud.Show(); Pump();
                     Check(!NativePinned(hud), "saved unpinned preference survives restart");
+                    var restoredPlace = (WindowPlacement)typeof(HudWindow).GetField("placement", flags).GetValue(hud);
+                    Check(Math.Abs(hud.Width - 58) < 1 && restoredPlace.SideEdge() == "right", "the right-edge column and its position survive restart");
                     Toggle(hud, true);
                     hud.Close(); hud = null; Pump();
                     hud = new HudWindow(directory, new Uri("http://127.0.0.1:1"), signal, false, exitSignal);

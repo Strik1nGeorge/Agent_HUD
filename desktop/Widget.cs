@@ -220,7 +220,7 @@ namespace AgentHud
         {
             capsule = new Grid { Cursor = Cursors.SizeAll, Background = Brushes.Transparent };
             capsule.Children.Add(tint); capsule.Children.Add(sheen); capsule.Children.Add(edge); capsule.Children.Add(rim);
-            body = new Grid();
+            body = new Grid { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
             capsule.Children.Add(body);
             codexTile = Tile(codexPet, codex, "CodexTile", out codexTip);
             claudeTile = Tile(claudePet, claude, "ClaudeTile", out claudeTip);
@@ -259,7 +259,7 @@ namespace AgentHud
             {
                 DependencyObject node = e.OriginalSource as DependencyObject;
                 while (node != null && node != capsule) { if (node is Button) return; node = VisualTreeHelper.GetParent(node); }
-                if (e.ButtonState == MouseButtonState.Pressed) { try { DragMove(); placement.EnsureVisible(true); SaveState(); CheckDock(); } catch (InvalidOperationException) { } }
+                if (e.ButtonState == MouseButtonState.Pressed) { try { placement.CompleteReanchor(); DragMove(); placement.EnsureVisible(true); SaveState(); CheckDock(); } catch (InvalidOperationException) { } }
             };
             return capsule;
         }
@@ -281,7 +281,8 @@ namespace AgentHud
 
         // Two layouts from the same parts. The strip (docked nowhere, or to the top or bottom) reads left to right;
         // against the left or right edge of the screen it becomes a column, pets above rings, buttons below.
-        void Arrange(bool column)
+        static Size LayoutSize(bool column) { return column ? new Size(58, 290) : new Size(282, 52); }
+        void Arrange(bool column, bool resizeWindow = true)
         {
             vertical = column;
             body.Children.Clear(); body.RowDefinitions.Clear(); body.ColumnDefinitions.Clear();
@@ -313,7 +314,9 @@ namespace AgentHud
                 buttons[i].Height = column ? track[5 + i] : 50;
                 Place(buttons[i], 5 + i, column);
             }
-            Width = column ? 58 : 282; Height = column ? 290 : 52;
+            var layoutSize = LayoutSize(column);
+            body.Width = layoutSize.Width; body.Height = layoutSize.Height;
+            if (resizeWindow) { Width = layoutSize.Width; Height = layoutSize.Height; }
             PlaceTips();
         }
         void Place(UIElement element, int index, bool column)
@@ -334,7 +337,7 @@ namespace AgentHud
         // After a move settles: against the left or right edge → column; anywhere else → strip.
         void CheckDock()
         {
-            if (placement == null || exiting) return;
+            if (placement == null || placement.IsReanchoring || exiting) return;
             var edge = placement.SideEdge();
             var column = edge != null;
             if (column == vertical && edge == saved.dock) return;
@@ -343,8 +346,14 @@ namespace AgentHud
             {
                 Rect before;
                 var known = placement.TryGetRect(out before);
+                if (known)
+                {
+                    menu.IsOpen = false; codexTip.IsOpen = false; claudeTip.IsOpen = false;
+                    var motion = new LayoutTransition(capsule, before, codexPet, codex, claudePet, claude, langButton, pinButton, periodButton, moreButton);
+                    placement.Reanchor(before, edge, LayoutSize(column), delegate { motion.Prepare(delegate { Arrange(column, false); }); }, motion.Render, motion.Finish);
+                    return; // Reanchor saves and settles once the new geometry is in place.
+                }
                 Arrange(column);
-                if (known) placement.Reanchor(before, edge);
             }
             else PlaceTips();
             SaveState();
@@ -368,7 +377,8 @@ namespace AgentHud
         // Starts from the current scale, so a quick tap reverses mid-flight; no overshoot.
         static void Press(UIElement element, double to, int milliseconds)
         {
-            var scale = (ScaleTransform)element.RenderTransform;
+            var scale = element.RenderTransform as ScaleTransform;
+            if (scale == null) scale = ((TransformGroup)element.RenderTransform).Children.OfType<ScaleTransform>().First();
             if (!SystemParameters.ClientAreaAnimation) { scale.ScaleX = scale.ScaleY = 1; return; }
             var move = new DoubleAnimation(to, TimeSpan.FromMilliseconds(milliseconds)) { EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut } };
             scale.BeginAnimation(ScaleTransform.ScaleXProperty, move); scale.BeginAnimation(ScaleTransform.ScaleYProperty, move);
@@ -598,6 +608,7 @@ namespace AgentHud
         }
         void SaveState()
         {
+            if (placement != null && placement.IsReanchoring) return;
             try
             {
                 saved.left = Left; saved.top = Top;

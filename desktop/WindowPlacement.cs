@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Win32;
 
@@ -33,7 +36,10 @@ namespace AgentHud
         readonly WidgetState saved;
         readonly Action save;
         HwndSource source;
-        bool pending, dragging, disposed;
+        bool pending, dragging, disposed, reanchoring;
+        EventHandler renderReanchor;
+        Action finishReanchor;
+        public bool IsReanchoring { get { return reanchoring; } }
         // Raised once a position has settled (after load, a drag, or a display change), so the widget can
         // pick its layout for where it ended up.
         public event Action Settled;
@@ -43,6 +49,8 @@ namespace AgentHud
             this.window = window; this.saved = saved; this.save = save;
             window.SourceInitialized += OnSource;
             window.Loaded += OnLoaded;
+            window.Closing += OnClosing;
+            window.IsVisibleChanged += OnVisibilityChanged;
             window.Closed += OnClosed;
             SystemEvents.DisplaySettingsChanged += OnDisplaysChanged;
         }
@@ -115,25 +123,86 @@ namespace AgentHud
             return index < 0 ? null : SideEdge(current, monitors[index].Work, 2 * Scale());
         }
         public bool TryGetRect(out Rect rect) { return TryRect(out rect); }
-        // After the window changes shape (strip ⇄ column), put it back where it was: flush against the edge it
-        // docked to, or, leaving an edge, on the side of the screen it was dragged to, without touching an edge.
-        public void Reanchor(Rect before, string edge)
+        public static Rect AnchoredBounds(Rect before, Size size, Rect work, string edge)
         {
-            window.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(delegate
+            var centerX = before.Left + before.Width / 2;
+            var x = edge == "left" ? work.Left : edge == "right" ? work.Right - size.Width
+                : centerX < work.Left + work.Width / 2 ? before.Left : before.Right - size.Width;
+            return Fit(new Rect(x, before.Top + before.Height / 2 - size.Height / 2, size.Width, size.Height), work, 0);
+        }
+        // Resize and reposition the native glass in the same call each frame. The content
+        // uses the same progress, so there is no resized-but-not-yet-reanchored frame.
+        public void Reanchor(Rect before, string edge, Size size, Action arrange, Action<double, Rect, Rect> render, Action finish)
+        {
+            if (disposed || reanchoring) return;
+            var monitors = Monitors();
+            var index = NearestArea(before, monitors.Select(m => m.Work).ToArray());
+            if (index < 0) return;
+            var scale = Scale();
+            var target = AnchoredBounds(before, new Size(Math.Round(size.Width * scale, MidpointRounding.AwayFromZero), Math.Round(size.Height * scale, MidpointRounding.AwayFromZero)), monitors[index].Work, edge);
+            reanchoring = true;
+            try
             {
-                Rect now;
-                if (!TryRect(out now)) return;
-                var monitors = Monitors();
-                var index = NearestArea(before, monitors.Select(m => m.Work).ToArray());
-                if (index < 0) return;
-                var work = monitors[index].Work;
-                var centerX = before.Left + before.Width / 2;
-                var x = edge == "left" ? work.Left : edge == "right" ? work.Right - now.Width
-                    : centerX < work.Left + work.Width / 2 ? before.Left : before.Right - now.Width;
-                var y = before.Top + before.Height / 2 - now.Height / 2;
-                Move(Fit(new Rect(x, y, now.Width, now.Height), work, 0));
-                save();
-            }));
+                arrange();
+                render(0, before, target);
+                finishReanchor = delegate
+                {
+                    if (renderReanchor != null) CompositionTarget.Rendering -= renderReanchor;
+                    renderReanchor = null; finishReanchor = null;
+                    try
+                    {
+                        render(1, target, target);
+                        SetBounds(target);
+                        window.UpdateLayout();
+                    }
+                    finally { finish(); reanchoring = false; }
+                    if (!disposed) { EnsureVisible(false); save(); if (Settled != null) Settled(); }
+                };
+                if (!SystemParameters.ClientAreaAnimation || !window.IsVisible)
+                {
+                    CompleteReanchor();
+                    return;
+                }
+                var clock = Stopwatch.StartNew();
+                var updating = false;
+                renderReanchor = delegate
+                {
+                    // Native WPF sizing can pump another Rendering notification. Never let
+                    // an older frame resume later and overwrite a newer frame's transforms.
+                    if (updating || !reanchoring) return;
+                    updating = true;
+                    try
+                    {
+                        var time = Math.Min(1, clock.Elapsed.TotalMilliseconds / 220);
+                        if (time >= 1) { CompleteReanchor(); return; }
+                        var progress = time * time * (3 - 2 * time);
+                        var next = new Rect(Math.Round(before.X + (target.X - before.X) * progress), Math.Round(before.Y + (target.Y - before.Y) * progress),
+                            Math.Round(before.Width + (target.Width - before.Width) * progress), Math.Round(before.Height + (target.Height - before.Height) * progress));
+                        render(progress, next, target);
+                        SetBounds(next);
+                    }
+                    finally { updating = false; }
+                };
+                CompositionTarget.Rendering += renderReanchor;
+            }
+            catch
+            {
+                if (renderReanchor != null) CompositionTarget.Rendering -= renderReanchor;
+                renderReanchor = null; finishReanchor = null;
+                finish(); reanchoring = false;
+                throw;
+            }
+        }
+        public void CompleteReanchor() { if (finishReanchor != null) finishReanchor(); }
+        void SetBounds(Rect target)
+        {
+            Rect current;
+            if (!TryRect(out current)) return;
+            var x = (int)Math.Round(target.Left); var y = (int)Math.Round(target.Top);
+            var width = (int)Math.Round(target.Width); var height = (int)Math.Round(target.Height);
+            if (current.Left == x && current.Top == y && current.Width == width && current.Height == height) return;
+            // NOCOPYBITS avoids presenting pixels copied from the old window size.
+            SetWindowPos(source.Handle, IntPtr.Zero, x, y, width, height, 0x0314);
         }
         static bool Fraction(double? value) { return value.HasValue && !Double.IsNaN(value.Value) && value.Value >= 0 && value.Value <= 1; }
         public static Rect AtOffset(Rect work, Size size, double x, double y)
@@ -149,7 +218,7 @@ namespace AgentHud
         public void EnsureVisible(bool snap)
         {
             Rect current;
-            if (!TryRect(out current) || dragging) return;
+            if (reanchoring || !TryRect(out current) || dragging) return;
             var monitors = Monitors();
             var index = NearestArea(current, monitors.Select(m => m.Work).ToArray());
             if (index < 0) return;
@@ -158,7 +227,7 @@ namespace AgentHud
         public void Capture()
         {
             Rect current;
-            if (!TryRect(out current)) return;
+            if (reanchoring || !TryRect(out current)) return;
             var monitors = Monitors();
             var index = NearestArea(current, monitors.Select(m => m.Work).ToArray());
             if (index < 0) return;
@@ -183,6 +252,7 @@ namespace AgentHud
         }
         public void Reset()
         {
+            CompleteReanchor();
             var monitor = Monitors().OrderByDescending(m => m.Primary).FirstOrDefault();
             if (monitor == null) return;
             PlaceOn(monitor, .98, .06);
@@ -206,7 +276,7 @@ namespace AgentHud
         }
         IntPtr OnMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
-            if (message == 0x0231) dragging = true;
+            if (message == 0x0231) { CompleteReanchor(); dragging = true; }
             else if (message == 0x0232) { dragging = false; QueueCheck(true); }
             else if (message == 0x02E0 || message == 0x007E || message == 0x001A) QueueCheck(false);
             return IntPtr.Zero;
@@ -218,7 +288,7 @@ namespace AgentHud
             window.Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(delegate
             {
                 pending = false;
-                if (!disposed && !dragging) { EnsureVisible(snap); save(); if (Settled != null) Settled(); }
+                if (!disposed && !dragging && !reanchoring) { EnsureVisible(snap); save(); if (Settled != null) Settled(); }
             }));
         }
         void OnDisplaysChanged(object sender, EventArgs e)
@@ -227,12 +297,16 @@ namespace AgentHud
             window.Dispatcher.BeginInvoke(new Action(delegate { QueueCheck(false); }));
         }
         void OnClosed(object sender, EventArgs e) { Dispose(); }
+        void OnClosing(object sender, CancelEventArgs e) { CompleteReanchor(); }
+        void OnVisibilityChanged(object sender, DependencyPropertyChangedEventArgs e) { if (!window.IsVisible) CompleteReanchor(); }
         public void Dispose()
         {
             if (disposed) return;
+            CompleteReanchor();
             disposed = true;
             SystemEvents.DisplaySettingsChanged -= OnDisplaysChanged;
             window.SourceInitialized -= OnSource; window.Loaded -= OnLoaded; window.Closed -= OnClosed;
+            window.Closing -= OnClosing; window.IsVisibleChanged -= OnVisibilityChanged;
             if (source != null && !source.IsDisposed) source.RemoveHook(OnMessage);
             source = null;
         }
